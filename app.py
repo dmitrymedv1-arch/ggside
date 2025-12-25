@@ -412,6 +412,10 @@ if 'imported_y_label' not in st.session_state:
 if 'imported_axis_settings' not in st.session_state:
     st.session_state.imported_axis_settings = None
 
+# Флаг для применения импортированных данных
+if 'apply_imported_data' not in st.session_state:
+    st.session_state.apply_imported_data = False
+
 # Доступные маркеры для matplotlib и Plotly
 matplotlib_markers = {
     'circle': 'o',
@@ -477,31 +481,8 @@ with st.sidebar:
     # Кнопка для применения загруженных данных
     if st.session_state.imported_datasets is not None:
         if st.button("✅ Применить загруженные данные", type="primary"):
-            # ПОЛНОСТЬЮ заменяем datasets на импортированные
-            st.session_state.datasets = st.session_state.imported_datasets.copy()
-            
-            st.session_state.x_axis_label = st.session_state.imported_x_label
-            st.session_state.y_axis_label = st.session_state.imported_y_label
-            
-            # Применяем настройки осей
-            if st.session_state.imported_axis_settings:
-                st.session_state.x_manual = st.session_state.imported_axis_settings['x_manual']
-                st.session_state.y_manual = st.session_state.imported_axis_settings['y_manual']
-                st.session_state.x_min = st.session_state.imported_axis_settings['x_min']
-                st.session_state.x_max = st.session_state.imported_axis_settings['x_max']
-                st.session_state.x_step = st.session_state.imported_axis_settings['x_step']
-                st.session_state.y_min = st.session_state.imported_axis_settings['y_min']
-                st.session_state.y_max = st.session_state.imported_axis_settings['y_max']
-                st.session_state.y_step = st.session_state.imported_axis_settings['y_step']
-            
-            # Сбрасываем состояние импорта
-            st.session_state.imported_file_content = None
-            st.session_state.imported_datasets = None
-            st.session_state.imported_x_label = None
-            st.session_state.imported_y_label = None
-            st.session_state.imported_axis_settings = None
-            
-            st.success("Данные успешно применены! Страница будет перезагружена.")
+            # Устанавливаем флаг для применения данных
+            st.session_state.apply_imported_data = True
             st.rerun()
     
     # Названия осей
@@ -603,6 +584,36 @@ with st.sidebar:
     if st.button("➖ Удалить последний набор") and len(st.session_state.datasets) > 1:
         st.session_state.datasets.pop()
 
+# Применяем импортированные данные (если установлен флаг)
+if st.session_state.apply_imported_data and st.session_state.imported_datasets is not None:
+    # ПОЛНОСТЬЮ заменяем datasets на импортированные
+    st.session_state.datasets = st.session_state.imported_datasets.copy()
+    
+    st.session_state.x_axis_label = st.session_state.imported_x_label
+    st.session_state.y_axis_label = st.session_state.imported_y_label
+    
+    # Применяем настройки осей
+    if st.session_state.imported_axis_settings:
+        st.session_state.x_manual = st.session_state.imported_axis_settings['x_manual']
+        st.session_state.y_manual = st.session_state.imported_axis_settings['y_manual']
+        st.session_state.x_min = st.session_state.imported_axis_settings['x_min']
+        st.session_state.x_max = st.session_state.imported_axis_settings['x_max']
+        st.session_state.x_step = st.session_state.imported_axis_settings['x_step']
+        st.session_state.y_min = st.session_state.imported_axis_settings['y_min']
+        st.session_state.y_max = st.session_state.imported_axis_settings['y_max']
+        st.session_state.y_step = st.session_state.imported_axis_settings['y_step']
+    
+    # Сбрасываем состояние импорта
+    st.session_state.imported_file_content = None
+    st.session_state.imported_datasets = None
+    st.session_state.imported_x_label = None
+    st.session_state.imported_y_label = None
+    st.session_state.imported_axis_settings = None
+    st.session_state.apply_imported_data = False
+    
+    st.success("Данные успешно применены!")
+    st.rerun()
+
 # Основная область
 tab1, tab2, tab3 = st.tabs(["📁 Данные", "📊 Графики", "📈 Статистика"])
 
@@ -702,7 +713,42 @@ with tab2:
     
     # Кнопка для построения графиков
     if st.button("🚀 Построить графики", type="primary"):
-        if 'all_data' in locals() and not all_data.empty:
+        # Собираем все данные для проверки
+        all_data_frames_local = []
+        for dataset in st.session_state.datasets:
+            if dataset['active']:
+                df = parse_data(dataset['data'], dataset['name'])
+                if not df.empty:
+                    all_data_frames_local.append(df)
+        
+        if all_data_frames_local:
+            all_data = pd.concat(all_data_frames_local, ignore_index=True)
+            
+            # Обновляем автоматические значения осей, если не заданы вручную
+            if not st.session_state.x_manual:
+                x_min_val = all_data['x'].min()
+                x_max_val = all_data['x'].max()
+                x_range = x_max_val - x_min_val
+                auto_x_min = max(0, x_min_val - 0.1 * x_range) if x_range > 0 else x_min_val - 0.1
+                auto_x_max = x_max_val + 0.1 * x_range if x_range > 0 else x_max_val + 0.1
+                auto_x_step = max(x_range / 10, 0.1)
+            else:
+                auto_x_min = st.session_state.x_min
+                auto_x_max = st.session_state.x_max
+                auto_x_step = st.session_state.x_step
+            
+            if not st.session_state.y_manual:
+                y_min_val = all_data['y'].min()
+                y_max_val = all_data['y'].max()
+                y_range = y_max_val - y_min_val
+                auto_y_min = y_min_val - 0.1 * y_range if y_range > 0 else y_min_val - 0.1
+                auto_y_max = y_max_val + 0.1 * y_range if y_range > 0 else y_max_val + 0.1
+                auto_y_step = max(y_range / 10, 0.1)
+            else:
+                auto_y_min = st.session_state.y_min
+                auto_y_max = st.session_state.y_max
+                auto_y_step = st.session_state.y_step
+            
             # Основной график с маргинальными распределениями
             st.subheader("Scatter Plot с маргинальными распределениями")
             
@@ -970,7 +1016,17 @@ with tab2:
 with tab3:
     st.header("Статистика данных")
     
-    if 'all_data' in locals() and not all_data.empty:
+    # Собираем все данные для статистики
+    stats_data_frames = []
+    for dataset in st.session_state.datasets:
+        if dataset['active']:
+            df = parse_data(dataset['data'], dataset['name'])
+            if not df.empty:
+                stats_data_frames.append(df)
+    
+    if stats_data_frames:
+        all_data = pd.concat(stats_data_frames, ignore_index=True)
+        
         # Общая статистика
         st.subheader("Общая статистика")
         
