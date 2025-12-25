@@ -64,6 +64,7 @@ def parse_data(text, dataset_name):
     return pd.DataFrame()
 
 # Улучшенная функция для оценки плотности с плавным переходом к нулю
+# Улучшенная функция для оценки плотности с плавным переходом к нулю
 def estimate_density(data, extend_range=True, padding_factor=0.3):
     """Оценивает плотность распределения с плавным переходом к нулю"""
     if len(data) > 1:
@@ -122,6 +123,22 @@ def estimate_density(data, extend_range=True, padding_factor=0.3):
             
             return x_vals, density
     return None, None
+
+# НОВАЯ ФУНКЦИЯ ДЛЯ НАСТРОЙКИ ЖИРНЫХ ГРАНИЦ ГРАФИКА
+def set_bold_axes(ax):
+    """Устанавливает жирные границы для осей графика"""
+    # Делаем все границы (spines) жирными
+    for spine in ax.spines.values():
+        spine.set_linewidth(2)
+    
+    # Также делаем жирными деления на осях
+    ax.tick_params(axis='both', which='major', width=2)
+    ax.tick_params(axis='both', which='minor', width=2)
+    
+    # Делаем жирными линии сетки
+    ax.grid(True, linewidth=1, alpha=0.3)
+    
+    return ax
 
 # Функция для экспорта всех данных с настройками
 def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual, 
@@ -1191,3 +1208,4 @@ st.markdown("""
 
 **Важно**: Файл "Скачать ВСЕ данные с настройками" содержит все параметры и может быть загружен обратно через боковую панель.
 """)
+
