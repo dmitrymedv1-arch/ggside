@@ -124,19 +124,31 @@ def estimate_density(data, extend_range=True, padding_factor=0.3):
             return x_vals, density
     return None, None
 
-# НОВАЯ ФУНКЦИЯ ДЛЯ НАСТРОЙКИ ЖИРНЫХ ГРАНИЦ ГРАФИКА
+# НОВАЯ ФУНКЦИЯ ДЛЯ НАСТРОЙКИ ЖИРНЫХ ЧЕРНЫХ ГРАНИЦ ГРАФИКА
 def set_bold_axes(ax):
-    """Устанавливает жирные границы для осей графика"""
-    # Делаем все границы (spines) жирными
+    """Устанавливает жирные черные границы для осей графика"""
+    # Делаем все границы (spines) жирными и черными
     for spine in ax.spines.values():
-        spine.set_linewidth(2)
+        spine.set_linewidth(2.5)
+        spine.set_color('black')  # Делаем границы черными
     
-    # Также делаем жирными деления на осях
-    ax.tick_params(axis='both', which='major', width=2)
-    ax.tick_params(axis='both', which='minor', width=2)
+    # Также делаем жирными и черными деления на осях
+    ax.tick_params(axis='both', which='major', width=2, color='black')
+    ax.tick_params(axis='both', which='minor', width=2, color='black')
     
-    # Делаем жирными линии сетки
-    ax.grid(True, linewidth=1, alpha=0.3)
+    # Делаем жирными метки на осях черными
+    ax.tick_params(axis='both', which='major', labelsize=10)
+    
+    # Делаем цвет меток на осях черным
+    ax.xaxis.label.set_color('black')
+    ax.yaxis.label.set_color('black')
+    
+    # Делаем цвет заголовка черным (если есть)
+    if ax.get_title():
+        ax.title.set_color('black')
+    
+    # Делаем жирными линии сетки серыми (можно оставить серыми или изменить)
+    ax.grid(True, linewidth=1, alpha=0.3, color='gray')
     
     return ax
 
@@ -1219,5 +1231,6 @@ st.markdown("""
 
 **Важно**: Файл "Скачать ВСЕ данные с настройками" содержит все параметры и может быть загружен обратно через боковую панель.
 """)
+
 
 
