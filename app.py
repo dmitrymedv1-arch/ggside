@@ -8,6 +8,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import math
 import io
+import json
+import base64
 
 # Настройка страницы
 st.set_page_config(
@@ -85,6 +87,178 @@ def estimate_density(data, extend_range=True, padding_factor=0.2):
         return x_vals, density
     return None, None
 
+# Функция для экспорта всех данных с настройками
+def export_all_data_with_settings(datasets, x_label, y_label):
+    """Создает CSV файл с данными и настройками"""
+    
+    # Создаем структуру для экспорта
+    export_dict = {
+        'metadata': {
+            'version': '1.0',
+            'x_axis_label': x_label,
+            'y_axis_label': y_label,
+            'num_datasets': len(datasets),
+            'export_timestamp': pd.Timestamp.now().isoformat()
+        },
+        'settings': [],
+        'data': []
+    }
+    
+    # Сохраняем настройки каждого набора данных
+    for i, dataset in enumerate(datasets):
+        dataset_settings = {
+            'dataset_index': i,
+            'name': dataset['name'],
+            'color': dataset['color'],
+            'marker': dataset['marker'],
+            'active': dataset['active']
+        }
+        export_dict['settings'].append(dataset_settings)
+        
+        # Сохраняем данные набора
+        if dataset['data'].strip():
+            df = parse_data(dataset['data'], dataset['name'])
+            if not df.empty:
+                for _, row in df.iterrows():
+                    data_point = {
+                        'dataset_index': i,
+                        'dataset_name': dataset['name'],
+                        'x': row['x'],
+                        'y': row['y']
+                    }
+                    export_dict['data'].append(data_point)
+    
+    # Создаем CSV-совместимую структуру
+    lines = []
+    
+    # 1. Метаданные
+    lines.append("# META DATA SECTION")
+    lines.append(f"x_axis_label: {x_label}")
+    lines.append(f"y_axis_label: {y_label}")
+    lines.append(f"num_datasets: {len(datasets)}")
+    lines.append(f"export_timestamp: {export_dict['metadata']['export_timestamp']}")
+    lines.append("")
+    
+    # 2. Настройки наборов данных
+    lines.append("# DATASET SETTINGS SECTION")
+    lines.append("index,name,color,marker,active")
+    for settings in export_dict['settings']:
+        lines.append(f"{settings['dataset_index']},{settings['name']},{settings['color']},{settings['marker']},{settings['active']}")
+    lines.append("")
+    
+    # 3. Данные
+    lines.append("# DATA POINTS SECTION")
+    lines.append("dataset_index,dataset_name,x,y")
+    for data_point in export_dict['data']:
+        lines.append(f"{data_point['dataset_index']},{data_point['dataset_name']},{data_point['x']},{data_point['y']}")
+    
+    return "\n".join(lines)
+
+# Функция для импорта данных с настройками
+def import_data_with_settings(file_content):
+    """Импортирует данные и настройки из CSV файла"""
+    
+    lines = file_content.strip().split('\n')
+    
+    # Инициализируем переменные
+    x_axis_label = "Temperature (°C)"
+    y_axis_label = "Conductivity (S cm⁻¹)"
+    datasets_settings = []
+    data_points = []
+    
+    current_section = None
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Пропускаем пустые строки
+        if not line:
+            continue
+            
+        # Определяем секцию
+        if line.startswith("# META DATA SECTION"):
+            current_section = "metadata"
+            continue
+        elif line.startswith("# DATASET SETTINGS SECTION"):
+            current_section = "settings"
+            continue
+        elif line.startswith("# DATA POINTS SECTION"):
+            current_section = "data"
+            continue
+        elif line.startswith("#"):
+            continue
+        
+        # Обрабатываем метаданные
+        if current_section == "metadata":
+            if line.startswith("x_axis_label:"):
+                x_axis_label = line.split(":", 1)[1].strip()
+            elif line.startswith("y_axis_label:"):
+                y_axis_label = line.split(":", 1)[1].strip()
+        
+        # Обрабатываем настройки
+        elif current_section == "settings":
+            if line.startswith("index,name,color,marker,active"):
+                continue
+            parts = line.split(',')
+            if len(parts) >= 5:
+                try:
+                    dataset_setting = {
+                        'index': int(parts[0]),
+                        'name': parts[1],
+                        'color': parts[2],
+                        'marker': parts[3],
+                        'active': parts[4].lower() == 'true'
+                    }
+                    datasets_settings.append(dataset_setting)
+                except:
+                    continue
+        
+        # Обрабатываем данные
+        elif current_section == "data":
+            if line.startswith("dataset_index,dataset_name,x,y"):
+                continue
+            parts = line.split(',')
+            if len(parts) >= 4:
+                try:
+                    data_point = {
+                        'dataset_index': int(parts[0]),
+                        'dataset_name': parts[1],
+                        'x': float(parts[2]),
+                        'y': float(parts[3])
+                    }
+                    data_points.append(data_point)
+                except:
+                    continue
+    
+    # Восстанавливаем наборы данных
+    datasets = []
+    
+    # Группируем данные по наборам
+    data_by_dataset = {}
+    for dp in data_points:
+        idx = dp['dataset_index']
+        if idx not in data_by_dataset:
+            data_by_dataset[idx] = []
+        data_by_dataset[idx].append(f"{dp['x']}\t{dp['y']}")
+    
+    # Создаем структуру datasets
+    for setting in datasets_settings:
+        idx = setting['index']
+        data_text = ""
+        if idx in data_by_dataset:
+            data_text = "\n".join(data_by_dataset[idx])
+        
+        dataset = {
+            'name': setting['name'],
+            'data': data_text,
+            'color': setting['color'],
+            'marker': setting['marker'],
+            'active': setting['active']
+        }
+        datasets.append(dataset)
+    
+    return datasets, x_axis_label, y_axis_label
+
 # Основной заголовок
 st.title("📊 Визуализация данных с маргинальными распределениями")
 st.markdown("---")
@@ -147,7 +321,7 @@ plotly_markers = {
     'star': 'star',
     'plus': 'cross',
     'x': 'x',
-    'point': 'circle-open'  # альтернатива для точки в plotly
+    'point': 'circle-open'
 }
 
 # Цвета по умолчанию
@@ -156,6 +330,29 @@ default_colors = ['#E41A1C', '#377EB8', '#4DAF4A', '#984EA3', '#FF7F00', '#FFFF3
 # Боковая панель для настроек
 with st.sidebar:
     st.header("⚙️ Настройки")
+    
+    # Кнопка для импорта данных
+    st.subheader("Импорт/Экспорт")
+    
+    uploaded_file = st.file_uploader(
+        "Загрузить данные с настройками",
+        type=['csv', 'txt'],
+        help="Загрузите файл, ранее экспортированный из этого приложения"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            file_content = uploaded_file.getvalue().decode('utf-8')
+            imported_datasets, imported_x_label, imported_y_label = import_data_with_settings(file_content)
+            
+            if imported_datasets:
+                st.session_state.datasets = imported_datasets
+                st.session_state.x_axis_label = imported_x_label
+                st.session_state.y_axis_label = imported_y_label
+                st.success(f"Успешно загружено {len(imported_datasets)} наборов данных!")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Ошибка при загрузке файла: {str(e)}")
     
     # Названия осей
     st.subheader("Настройка осей")
@@ -584,24 +781,35 @@ with tab3:
             # Экспорт данных
             st.subheader("Экспорт данных")
             
-            # CSV
-            csv = stats_df.to_csv(index=False, sep='\t').encode('utf-8')
+            # CSV со статистикой
+            csv_stats = stats_df.to_csv(index=False, sep='\t').encode('utf-8')
             st.download_button(
                 label="📥 Скачать статистику (CSV)",
-                data=csv,
+                data=csv_stats,
                 file_name="data_statistics.csv",
                 mime="text/csv"
             )
             
-            # Экспорт всех данных
-            if 'all_data' in locals():
-                all_data_csv = all_data.to_csv(index=False, sep='\t').encode('utf-8')
-                st.download_button(
-                    label="📥 Скачать все данные (CSV)",
-                    data=all_data_csv,
-                    file_name="all_data.csv",
-                    mime="text/csv"
-                )
+            # Экспорт всех данных с настройками
+            all_data_with_settings = export_all_data_with_settings(
+                st.session_state.datasets,
+                st.session_state.x_axis_label,
+                st.session_state.y_axis_label
+            )
+            
+            st.download_button(
+                label="📥 Скачать ВСЕ данные с настройками (CSV)",
+                data=all_data_with_settings.encode('utf-8'),
+                file_name="all_data_with_settings.csv",
+                mime="text/csv",
+                help="Этот файл содержит все данные и настройки. Его можно загрузить обратно в приложение."
+            )
+            
+            # Предпросмотр экспортируемых данных
+            with st.expander("Предпросмотр экспортируемых данных с настройками"):
+                st.code(all_data_with_settings[:2000], language='text')
+                if len(all_data_with_settings) > 2000:
+                    st.info(f"И ещё {len(all_data_with_settings) - 2000} символов...")
         
         # Настройки осей
         st.subheader("Настройки осей")
@@ -618,7 +826,22 @@ with tab3:
             st.write(f"Минимум: {y_min:.3f}" if y_min is not None else "Автоопределение")
             st.write(f"Максимум: {y_max:.3f}" if y_max is not None else "Автоопределение")
             st.write(f"Шаг: {y_step:.3f}" if y_step is not None else "Автоопределение")
-    
+        
+        # Информация о наборах данных
+        st.subheader("Информация о наборах данных")
+        for i, dataset in enumerate(st.session_state.datasets):
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.markdown(f"**{dataset['name']}**")
+            with col2:
+                color_box = f'<span style="display: inline-block; width: 20px; height: 20px; background-color: {dataset["color"]}; border-radius: 3px;"></span>'
+                st.markdown(f"Цвет: {color_box}", unsafe_allow_html=True)
+            with col3:
+                st.markdown(f"Маркер: {dataset['marker']}")
+            with col4:
+                status = "✅ Активен" if dataset['active'] else "❌ Не активен"
+                st.markdown(status)
+                
     else:
         st.info("Постройте графики во вкладке 'Графики' для отображения статистики.")
 
@@ -627,9 +850,15 @@ st.markdown("---")
 st.markdown("### Инструкция по использованию:")
 st.markdown("""
 1. **Вкладка 'Данные'**: Настройте наборы данных, введите значения X и Y через табуляцию
-2. **Боковая панель**: Задайте названия осей и границы (опционально)
+2. **Боковая панель**: 
+   - Задайте названия осей и границы (опционально)
+   - Загрузите ранее экспортированные данные с настройками
 3. **Вкладка 'Графики'**: Нажмите кнопку "Построить графики" для визуализации
-4. **Вкладка 'Статистика'**: Просмотрите статистику данных и экспортируйте результаты
+4. **Вкладка 'Статистика'**: 
+   - Просмотрите статистику данных
+   - Экспортируйте статистику отдельно
+   - Экспортируйте ВСЕ данные с настройками для последующей загрузки
 
+**Важно**: Файл "Скачать ВСЕ данные с настройками" содержит все параметры и может быть загружен обратно через боковую панель.
 """)
 
