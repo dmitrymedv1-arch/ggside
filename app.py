@@ -578,72 +578,30 @@ def auto_detect_axis_limits(datasets):
     }
 
 # Боковая панель для настроек
+# Боковая панель для настроек
 with st.sidebar:
     st.header("⚙️ Настройки")
     
-    # Раздел для настроек маркеров и легенды
-    st.subheader("Настройки отображения")
+    # 1. Управление наборами данных
+    st.subheader("Управление наборами данных")
     
-    # Виджет для изменения размера всех маркеров
-    marker_size = st.slider(
-        "Размер всех маркеров",
-        min_value=10,
-        max_value=200,
-        value=st.session_state.marker_size,
-        step=5,
-        key="marker_size_slider",
-        help="Изменяет размер всех маркеров на графиках"
-    )
-    st.session_state.marker_size = marker_size
+    if st.button("➕ Добавить новый набор данных", key="add_dataset_button"):
+        idx = len(st.session_state.datasets)
+        new_dataset = {
+            'name': f'Набор {idx + 1}',
+            'data': '',
+            'color': default_colors[idx % len(default_colors)],
+            'marker': 'circle',
+            'active': True
+        }
+        st.session_state.datasets.append(new_dataset)
+        st.rerun()
     
-    # Виджет для изменения размера шрифта легенды
-    legend_fontsize = st.slider(
-        "Размер шрифта легенды",
-        min_value=6,
-        max_value=24,
-        value=st.session_state.legend_fontsize,
-        step=1,
-        key="legend_fontsize_slider",
-        help="Изменяет размер шрифта в легенде графиков"
-    )
-    st.session_state.legend_fontsize = legend_fontsize
+    if st.button("➖ Удалить последний набор", key="remove_dataset_button") and len(st.session_state.datasets) > 0:
+        st.session_state.datasets.pop()
+        st.rerun()
     
-    # Кнопка для импорта данных
-    st.subheader("Импорт/Экспорт")
-    
-    uploaded_file = st.file_uploader(
-        "Загрузить данные с настройками",
-        type=['csv', 'txt'],
-        help="Загрузите файл, ранее экспортированный из этого приложения"
-    )
-    
-    if uploaded_file is not None:
-        try:
-            file_content = uploaded_file.getvalue().decode('utf-8')
-            imported_datasets, imported_x_label, imported_y_label, imported_axis_settings, imported_marker_size, imported_legend_fontsize = import_data_with_settings(file_content)
-            
-            if imported_datasets:
-                st.session_state.imported_file_content = file_content
-                st.session_state.imported_datasets = imported_datasets
-                st.session_state.imported_x_label = imported_x_label
-                st.session_state.imported_y_label = imported_y_label
-                st.session_state.imported_axis_settings = imported_axis_settings
-                st.session_state.imported_marker_size = imported_marker_size
-                st.session_state.imported_legend_fontsize = imported_legend_fontsize
-                
-                st.success(f"Файл загружен! Обнаружено {len(imported_datasets)} наборов данных.")
-                st.info("Нажмите кнопку 'Применить загруженные данные' ниже, чтобы использовать эти настройки.")
-        except Exception as e:
-            st.error(f"Ошибка при загрузке файла: {str(e)}")
-    
-    # Кнопка для применения загруженных данных
-    if st.session_state.imported_datasets is not None:
-        if st.button("✅ Применить загруженные данные", type="primary"):
-            # Устанавливаем флаг для применения данных
-            st.session_state.apply_imported_data = True
-            st.rerun()
-    
-    # Названия осей
+    # 2. Настройка осей
     st.subheader("Настройка осей")
     st.session_state.x_axis_label = st.text_input(
         "Название оси X",
@@ -673,7 +631,7 @@ with st.sidebar:
     if st.session_state.y_step is None:
         st.session_state.y_step = auto_limits['y_step']
     
-    # Управление осями
+    # 3. Управление границами осей
     st.subheader("Управление границами осей")
     
     col1, col2 = st.columns(2)
@@ -754,25 +712,68 @@ with st.sidebar:
         st.session_state.y_step = auto_limits['y_step']
         st.rerun()
     
-    # Управление наборами данных
-    st.subheader("Управление наборами данных")
+    # 4. Настройки отображения
+    st.subheader("Настройки отображения")
     
-    if st.button("➕ Добавить новый набор данных", key="add_dataset_button"):
-        idx = len(st.session_state.datasets)
-        new_dataset = {
-            'name': f'Набор {idx + 1}',
-            'data': '',
-            'color': default_colors[idx % len(default_colors)],
-            'marker': 'circle',
-            'active': True
-        }
-        st.session_state.datasets.append(new_dataset)
-        st.rerun()
+    # Виджет для изменения размера всех маркеров
+    marker_size = st.slider(
+        "Размер всех маркеров",
+        min_value=10,
+        max_value=200,
+        value=st.session_state.marker_size,
+        step=5,
+        key="marker_size_slider",
+        help="Изменяет размер всех маркеров на графиках"
+    )
+    st.session_state.marker_size = marker_size
     
-    if st.button("➖ Удалить последний набор", key="remove_dataset_button") and len(st.session_state.datasets) > 0:
-        st.session_state.datasets.pop()
-        st.rerun()
-
+    # Виджет для изменения размера шрифта легенды
+    legend_fontsize = st.slider(
+        "Размер шрифта легенды",
+        min_value=6,
+        max_value=24,
+        value=st.session_state.legend_fontsize,
+        step=1,
+        key="legend_fontsize_slider",
+        help="Изменяет размер шрифта в легенде графиков"
+    )
+    st.session_state.legend_fontsize = legend_fontsize
+    
+    # 5. Импорт/Экспорт
+    st.subheader("Импорт/Экспорт")
+    
+    uploaded_file = st.file_uploader(
+        "Загрузить данные с настройками",
+        type=['csv', 'txt'],
+        help="Загрузите файл, ранее экспортированный из этого приложения"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            file_content = uploaded_file.getvalue().decode('utf-8')
+            imported_datasets, imported_x_label, imported_y_label, imported_axis_settings, imported_marker_size, imported_legend_fontsize = import_data_with_settings(file_content)
+            
+            if imported_datasets:
+                st.session_state.imported_file_content = file_content
+                st.session_state.imported_datasets = imported_datasets
+                st.session_state.imported_x_label = imported_x_label
+                st.session_state.imported_y_label = imported_y_label
+                st.session_state.imported_axis_settings = imported_axis_settings
+                st.session_state.imported_marker_size = imported_marker_size
+                st.session_state.imported_legend_fontsize = imported_legend_fontsize
+                
+                st.success(f"Файл загружен! Обнаружено {len(imported_datasets)} наборов данных.")
+                st.info("Нажмите кнопку 'Применить загруженные данные' ниже, чтобы использовать эти настройки.")
+        except Exception as e:
+            st.error(f"Ошибка при загрузке файла: {str(e)}")
+    
+    # Кнопка для применения загруженных данных
+    if st.session_state.imported_datasets is not None:
+        if st.button("✅ Применить загруженные данные", type="primary"):
+            # Устанавливаем флаг для применения данных
+            st.session_state.apply_imported_data = True
+            st.rerun()
+            
 # Применяем импортированные данные (если установлен флаг)
 if st.session_state.apply_imported_data and st.session_state.imported_datasets is not None:
     # ПОЛНОСТЬЮ заменяем datasets на импортированные
@@ -1383,4 +1384,5 @@ st.markdown("""
 
 **Важно**: Файл "Скачать ВСЕ данные с настройками" содержит все параметры (включая размер маркеров и легенды) и может быть загружен обратно через боковую панель.
 """)
+
 
