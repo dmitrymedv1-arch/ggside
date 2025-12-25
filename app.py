@@ -63,9 +63,9 @@ def parse_data(text, dataset_name):
         return df
     return pd.DataFrame()
 
-# Функция для оценки плотности
-def estimate_density(data, extend_range=True, padding_factor=0.2):
-    """Оценивает плотность распределения"""
+# Улучшенная функция для оценки плотности с плавным переходом к нулю
+def estimate_density(data, extend_range=True, padding_factor=0.3):
+    """Оценивает плотность распределения с плавным переходом к нулю"""
     if len(data) > 1:
         kde = gaussian_kde(data)
         
@@ -73,18 +73,54 @@ def estimate_density(data, extend_range=True, padding_factor=0.2):
         data_range = data_max - data_min
         
         if extend_range and data_range > 0:
-            x_vals = np.linspace(data_min - padding_factor*data_range, 
-                                data_max + padding_factor*data_range, 500)
+            # Увеличиваем диапазон для плавного перехода к нулю
+            extended_min = data_min - padding_factor * data_range
+            extended_max = data_max + padding_factor * data_range
+            
+            # Создаем точки для оценки плотности
+            x_vals = np.linspace(extended_min, extended_max, 1000)
+            
+            # Оцениваем плотность
+            density = kde(x_vals)
+            
+            # Применяем оконную функцию для плавного перехода к нулю на краях
+            # Используем косинусное окно для плавного перехода
+            window_size = padding_factor * data_range
+            left_window = (x_vals - extended_min) / window_size
+            right_window = (extended_max - x_vals) / window_size
+            
+            # Создаем оконную функцию (cosine taper)
+            window = np.ones_like(x_vals)
+            
+            # Плавное уменьшение на левом краю
+            mask_left = left_window < 1.0
+            if np.any(mask_left):
+                window[mask_left] = 0.5 * (1 - np.cos(np.pi * left_window[mask_left]))
+            
+            # Плавное уменьшение на правом краю
+            mask_right = right_window < 1.0
+            if np.any(mask_right):
+                window[mask_right] = np.minimum(window[mask_right], 
+                                               0.5 * (1 - np.cos(np.pi * right_window[mask_right])))
+            
+            # Применяем оконную функцию
+            density = density * window
+            
+            # Нормируем плотность для отображения (0-1)
+            if density.max() > 0:
+                density = density / density.max()
+            
+            return x_vals, density
         else:
+            # Если не расширяем диапазон, просто оцениваем плотность
             x_vals = np.linspace(data_min, data_max, 500)
-        
-        density = kde(x_vals)
-        
-        # Нормируем плотность
-        if density.max() > 0:
-            density = density / density.max()
-        
-        return x_vals, density
+            density = kde(x_vals)
+            
+            # Нормируем плотность
+            if density.max() > 0:
+                density = density / density.max()
+            
+            return x_vals, density
     return None, None
 
 # Функция для экспорта всех данных с настройками
@@ -339,37 +375,15 @@ def import_data_with_settings(file_content):
 st.title("📊 Визуализация данных с маргинальными распределениями")
 st.markdown("---")
 
-# Инициализация состояния сессии
+# Инициализация состояния сессии - БЕЗ ДАННЫХ ПО УМОЛЧАНИЮ
 if 'datasets' not in st.session_state:
-    st.session_state.datasets = [
-        {
-            'name': 'Sample x',
-            'data': '0\t-5\n0.2\t-7\n0.1\t-7\n0.15\t-7.5',
-            'color': '#E41A1C',
-            'marker': 'circle',
-            'active': True
-        },
-        {
-            'name': 'Sample y',
-            'data': '0.05\t-5\n0.2\t-7\n0.15\t-5.5\n0.15\t-6\n0.15\t-7.5\n0.3\t-5.5',
-            'color': '#377EB8',
-            'marker': 'square',
-            'active': True
-        },
-        {
-            'name': 'Sample z',
-            'data': '0.05\t-7\n0.15\t-5\n0.2\t-7.5\n0.2\t-6\n0.1\t-4.5',
-            'color': '#4DAF4A',
-            'marker': 'triangle-up',
-            'active': True
-        }
-    ]
+    st.session_state.datasets = []  # Пустой список вместо данных по умолчанию
 
 if 'x_axis_label' not in st.session_state:
-    st.session_state.x_axis_label = 'Temperature (°C)'
+    st.session_state.x_axis_label = 'X Axis'
 
 if 'y_axis_label' not in st.session_state:
-    st.session_state.y_axis_label = 'Conductivity (S cm⁻¹)'
+    st.session_state.y_axis_label = 'Y Axis'
 
 # Инициализация состояния для настроек осей
 if 'x_manual' not in st.session_state:
@@ -570,19 +584,21 @@ with st.sidebar:
     # Управление наборами данных
     st.subheader("Управление наборами данных")
     
-    if st.button("➕ Добавить новый набор данных"):
+    if st.button("➕ Добавить новый набор данных", key="add_dataset_button"):
         idx = len(st.session_state.datasets)
         new_dataset = {
-            'name': f'Sample {chr(97 + idx)}',
+            'name': f'Набор {idx + 1}',
             'data': '',
             'color': default_colors[idx % len(default_colors)],
             'marker': 'circle',
             'active': True
         }
         st.session_state.datasets.append(new_dataset)
+        st.rerun()
     
-    if st.button("➖ Удалить последний набор") and len(st.session_state.datasets) > 1:
+    if st.button("➖ Удалить последний набор", key="remove_dataset_button") and len(st.session_state.datasets) > 0:
         st.session_state.datasets.pop()
+        st.rerun()
 
 # Применяем импортированные данные (если установлен флаг)
 if st.session_state.apply_imported_data and st.session_state.imported_datasets is not None:
@@ -622,107 +638,69 @@ with tab1:
     st.markdown("Введите данные в формате: **X_value<tab>Y_value**")
     st.markdown("Пример: `0.1\t-5.5`")
     
-    # Отображение и редактирование наборов данных
-    all_data_frames = []
-    
-    for i, dataset in enumerate(st.session_state.datasets):
-        with st.expander(f"Набор данных {i+1}: {dataset['name']}", expanded=True):
-            col1, col2, col3 = st.columns([2, 1, 1])
-            
-            with col1:
-                new_name = st.text_input(
-                    f"Название набора {i+1}",
-                    value=dataset['name'],
-                    key=f"name_{i}"
-                )
-                st.session_state.datasets[i]['name'] = new_name
+    if len(st.session_state.datasets) == 0:
+        st.info("Нет наборов данных. Нажмите кнопку '➕ Добавить новый набор данных' в боковой панели.")
+    else:
+        # Отображение и редактирование наборов данных
+        all_data_frames = []
+        
+        for i, dataset in enumerate(st.session_state.datasets):
+            with st.expander(f"Набор данных {i+1}: {dataset['name']}", expanded=True):
+                col1, col2, col3 = st.columns([2, 1, 1])
                 
-                data_text = st.text_area(
-                    "Данные (X\\tY)",
-                    value=dataset['data'],
-                    height=150,
-                    key=f"data_{i}"
-                )
-                st.session_state.datasets[i]['data'] = data_text
-            
-            with col2:
-                color = st.color_picker(
-                    "Цвет",
-                    value=dataset['color'],
-                    key=f"color_{i}"
-                )
-                st.session_state.datasets[i]['color'] = color
-            
-            with col3:
-                marker = st.selectbox(
-                    "Маркер",
-                    options=list(matplotlib_markers.keys()),
-                    index=list(matplotlib_markers.keys()).index(dataset['marker']),
-                    key=f"marker_{i}"
-                )
-                st.session_state.datasets[i]['marker'] = marker
-                
-                active = st.checkbox(
-                    "Активен",
-                    value=dataset['active'],
-                    key=f"active_{i}"
-                )
-                st.session_state.datasets[i]['active'] = active
-            
-            # Парсим данные для предварительного просмотра
-            if data_text.strip():
-                df = parse_data(data_text, new_name)
-                if not df.empty:
-                    all_data_frames.append(df)
+                with col1:
+                    new_name = st.text_input(
+                        f"Название набора {i+1}",
+                        value=dataset['name'],
+                        key=f"name_{i}"
+                    )
+                    st.session_state.datasets[i]['name'] = new_name
                     
-                    # Предпросмотр данных
-                    st.markdown(f"**Предпросмотр ({len(df)} точек):**")
-                    st.dataframe(df[['x', 'y']].head(), use_container_width=True)
-    
-    # Собираем все данные
-    if all_data_frames:
-        all_data = pd.concat(all_data_frames, ignore_index=True)
+                    data_text = st.text_area(
+                        "Данные (X\\tY)",
+                        value=dataset['data'],
+                        height=150,
+                        key=f"data_{i}"
+                    )
+                    st.session_state.datasets[i]['data'] = data_text
+                
+                with col2:
+                    color = st.color_picker(
+                        "Цвет",
+                        value=dataset['color'],
+                        key=f"color_{i}"
+                    )
+                    st.session_state.datasets[i]['color'] = color
+                
+                with col3:
+                    marker = st.selectbox(
+                        "Маркер",
+                        options=list(matplotlib_markers.keys()),
+                        index=list(matplotlib_markers.keys()).index(dataset['marker']),
+                        key=f"marker_{i}"
+                    )
+                    st.session_state.datasets[i]['marker'] = marker
+                    
+                    active = st.checkbox(
+                        "Активен",
+                        value=dataset['active'],
+                        key=f"active_{i}"
+                    )
+                    st.session_state.datasets[i]['active'] = active
+                
+                # Парсим данные для предварительного просмотра
+                if data_text.strip():
+                    df = parse_data(data_text, new_name)
+                    if not df.empty:
+                        all_data_frames.append(df)
+                        
+                        # Предпросмотр данных
+                        st.markdown(f"**Предпросмотр ({len(df)} точек):**")
+                        st.dataframe(df[['x', 'y']].head(), use_container_width=True)
         
-        # Обновляем автоматические значения осей, если не заданы вручную
-        if not st.session_state.x_manual:
-            x_min_val = all_data['x'].min()
-            x_max_val = all_data['x'].max()
-            x_range = x_max_val - x_min_val
-            auto_x_min = max(0, x_min_val - 0.1 * x_range) if x_range > 0 else x_min_val - 0.1
-            auto_x_max = x_max_val + 0.1 * x_range if x_range > 0 else x_max_val + 0.1
-            auto_x_step = max(x_range / 10, 0.1)
-        else:
-            auto_x_min = st.session_state.x_min
-            auto_x_max = st.session_state.x_max
-            auto_x_step = st.session_state.x_step
-        
-        if not st.session_state.y_manual:
-            y_min_val = all_data['y'].min()
-            y_max_val = all_data['y'].max()
-            y_range = y_max_val - y_min_val
-            auto_y_min = y_min_val - 0.1 * y_range if y_range > 0 else y_min_val - 0.1
-            auto_y_max = y_max_val + 0.1 * y_range if y_range > 0 else y_max_val + 0.1
-            auto_y_step = max(y_range / 10, 0.1)
-        else:
-            auto_y_min = st.session_state.y_min
-            auto_y_max = st.session_state.y_max
-            auto_y_step = st.session_state.y_step
-
-with tab2:
-    st.header("Визуализация данных")
-    
-    # Кнопка для построения графиков
-    if st.button("🚀 Построить графики", type="primary"):
-        # Собираем все данные для проверки
-        all_data_frames_local = []
-        for dataset in st.session_state.datasets:
-            if dataset['active']:
-                df = parse_data(dataset['data'], dataset['name'])
-                if not df.empty:
-                    all_data_frames_local.append(df)
-        
-        if all_data_frames_local:
-            all_data = pd.concat(all_data_frames_local, ignore_index=True)
+        # Собираем все данные
+        if all_data_frames:
+            all_data = pd.concat(all_data_frames, ignore_index=True)
             
             # Обновляем автоматические значения осей, если не заданы вручную
             if not st.session_state.x_manual:
@@ -748,270 +726,325 @@ with tab2:
                 auto_y_min = st.session_state.y_min
                 auto_y_max = st.session_state.y_max
                 auto_y_step = st.session_state.y_step
-            
-            # Основной график с маргинальными распределениями
-            st.subheader("Scatter Plot с маргинальными распределениями")
-            
-            # Создаем фигуру Matplotlib
-            fig, (ax_top, ax_main) = plt.subplots(
-                2, 2, 
-                figsize=(12, 10),
-                gridspec_kw={'height_ratios': [1, 3], 'width_ratios': [3, 1]},
-                constrained_layout=True
-            )
-            
-            # Убираем лишние оси
-            ax_right = ax_main[1]
-            ax_main = ax_main[0]
-            ax_top[1].axis('off')
-            ax_top = ax_top[0]
-            
-            # Рисуем точки на основном графике
-            for i, dataset in enumerate(st.session_state.datasets):
+
+with tab2:
+    st.header("Визуализация данных")
+    
+    # Проверяем, есть ли данные для построения графиков
+    has_data = False
+    for dataset in st.session_state.datasets:
+        if dataset['active'] and dataset['data'].strip():
+            df = parse_data(dataset['data'], dataset['name'])
+            if not df.empty:
+                has_data = True
+                break
+    
+    if not has_data:
+        st.warning("Нет данных для отображения! Пожалуйста, добавьте наборы данных и введите данные во вкладке 'Данные'.")
+    else:
+        # Кнопка для построения графиков
+        if st.button("🚀 Построить графики", type="primary"):
+            # Собираем все данные для проверки
+            all_data_frames_local = []
+            for dataset in st.session_state.datasets:
                 if dataset['active']:
                     df = parse_data(dataset['data'], dataset['name'])
                     if not df.empty:
-                        ax_main.scatter(
-                            df['x'], df['y'],
-                            color=dataset['color'],
-                            label=dataset['name'],
-                            marker=matplotlib_markers[dataset['marker']],
-                            s=50,
-                            alpha=0.7
-                        )
+                        all_data_frames_local.append(df)
             
-            # Настройки основного графика
-            ax_main.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=12)
-            ax_main.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=12)
-            ax_main.legend(title='Наборы данных')
-            ax_main.grid(True, alpha=0.3)
-            
-            # Применяем границы осей
-            if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
-                ax_main.set_xlim(st.session_state.x_min, st.session_state.x_max)
-                ax_top.set_xlim(st.session_state.x_min, st.session_state.x_max)
-            elif 'auto_x_min' in locals() and 'auto_x_max' in locals():
-                ax_main.set_xlim(auto_x_min, auto_x_max)
-                ax_top.set_xlim(auto_x_min, auto_x_max)
-            
-            if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
-                ax_main.set_ylim(st.session_state.y_min, st.session_state.y_max)
-                ax_right.set_ylim(st.session_state.y_min, st.session_state.y_max)
-            elif 'auto_y_min' in locals() and 'auto_y_max' in locals():
-                ax_main.set_ylim(auto_y_min, auto_y_max)
-                ax_right.set_ylim(auto_y_min, auto_y_max)
-            
-            # Рисуем маргинальные распределения
-            for i, dataset in enumerate(st.session_state.datasets):
-                if dataset['active']:
-                    df = parse_data(dataset['data'], dataset['name'])
-                    if not df.empty and len(df) > 1:
-                        color = dataset['color']
-                        
-                        # Распределение по X (верхний график)
-                        x_vals, density = estimate_density(df['x'].values)
-                        if x_vals is not None and density is not None:
-                            ax_top.fill_between(x_vals, 0, density, color=color, alpha=0.3)
-                            ax_top.plot(x_vals, density, color=color, linewidth=1.5)
-                        
-                        # Распределение по Y (правый график)
-                        y_vals, density = estimate_density(df['y'].values)
-                        if y_vals is not None and density is not None:
-                            ax_right.fill_betweenx(y_vals, 0, density, color=color, alpha=0.3)
-                            ax_right.plot(density, y_vals, color=color, linewidth=1.5)
-            
-            # Настройки маргинальных графиков
-            ax_top.set_ylabel('Density', fontsize=10)
-            ax_top.set_ylim(0, 1.1)
-            ax_top.tick_params(axis='x', labelbottom=False)
-            ax_top.grid(True, alpha=0.3)
-            
-            ax_right.set_xlabel('Density', fontsize=10)
-            ax_right.set_xlim(0, 1.1)
-            ax_right.tick_params(axis='y', labelleft=False)
-            ax_right.grid(True, alpha=0.3)
-            
-            # Заголовок
-            fig.suptitle('Scatter Plot with Marginal Densities', fontsize=14, fontweight='bold')
-            
-            st.pyplot(fig)
-            
-            # Альтернативные графики
-            st.subheader("Альтернативное представление")
-            
-            fig2, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 12))
-            
-            # 1. Основной scatter plot
-            for i, dataset in enumerate(st.session_state.datasets):
-                if dataset['active']:
-                    df = parse_data(dataset['data'], dataset['name'])
-                    if not df.empty:
-                        ax1.scatter(df['x'], df['y'], 
-                                  color=dataset['color'], 
-                                  label=dataset['name'],
-                                  marker=matplotlib_markers[dataset['marker']],
-                                  s=100, alpha=0.7)
-            
-            ax1.set_title('Scatter Plot: Все образцы')
-            ax1.set_xlabel(format_axis_label(st.session_state.x_axis_label))
-            ax1.set_ylabel(format_axis_label(st.session_state.y_axis_label))
-            ax1.legend(title='Группа')
-            ax1.grid(True, alpha=0.3)
-            
-            # Применяем границы осей
-            if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
-                ax1.set_xlim(st.session_state.x_min, st.session_state.x_max)
-                ax3.set_xlim(st.session_state.x_min, st.session_state.x_max)
-            elif 'auto_x_min' in locals() and 'auto_x_max' in locals():
-                ax1.set_xlim(auto_x_min, auto_x_max)
-                ax3.set_xlim(auto_x_min, auto_x_max)
-            
-            if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
-                ax1.set_ylim(st.session_state.y_min, st.session_state.y_max)
-                ax4.set_ylim(st.session_state.y_min, st.session_state.y_max)
-            elif 'auto_y_min' in locals() and 'auto_y_max' in locals():
-                ax1.set_ylim(auto_y_min, auto_y_max)
-                ax4.set_ylim(auto_y_min, auto_y_max)
-            
-            # 2. Второй scatter plot
-            for i, dataset in enumerate(st.session_state.datasets):
-                if dataset['active']:
-                    df = parse_data(dataset['data'], dataset['name'])
-                    if not df.empty:
-                        ax2.scatter(df['x'], df['y'], 
-                                  color=dataset['color'], 
-                                  label=dataset['name'],
-                                  marker=matplotlib_markers[dataset['marker']],
-                                  s=100, alpha=0.7)
-            
-            ax2.set_title('Scatter Plot')
-            ax2.set_xlabel(format_axis_label(st.session_state.x_axis_label))
-            ax2.set_ylabel(format_axis_label(st.session_state.y_axis_label))
-            ax2.legend(title='Группа')
-            ax2.grid(True, alpha=0.3)
-            
-            # 3. KDE для X
-            for i, dataset in enumerate(st.session_state.datasets):
-                if dataset['active']:
-                    df = parse_data(dataset['data'], dataset['name'])
-                    if not df.empty and len(df) > 1:
-                        color = dataset['color']
-                        x_vals, density = estimate_density(df['x'].values)
-                        if x_vals is not None and density is not None:
-                            ax3.fill_between(x_vals, 0, density, color=color, alpha=0.3)
-                            ax3.plot(x_vals, density, color=color, linewidth=2, label=dataset['name'])
-            
-            ax3.set_title('Распределение по X')
-            ax3.set_xlabel(format_axis_label(st.session_state.x_axis_label))
-            ax3.set_ylabel('Нормированная плотность')
-            ax3.legend(title='Группа')
-            ax3.grid(True, alpha=0.3)
-            
-            # 4. KDE для Y
-            for i, dataset in enumerate(st.session_state.datasets):
-                if dataset['active']:
-                    df = parse_data(dataset['data'], dataset['name'])
-                    if not df.empty and len(df) > 1:
-                        color = dataset['color']
-                        y_vals, density = estimate_density(df['y'].values)
-                        if y_vals is not None and density is not None:
-                            ax4.fill_between(y_vals, 0, density, color=color, alpha=0.3)
-                            ax4.plot(y_vals, density, color=color, linewidth=2, label=dataset['name'])
-            
-            ax4.set_title('Распределение по Y')
-            ax4.set_xlabel(format_axis_label(st.session_state.y_axis_label))
-            ax4.set_ylabel('Нормированная плотность')
-            ax4.legend(title='Группа')
-            ax4.grid(True, alpha=0.3)
-            
-            plt.suptitle('Анализ данных с маргинальными распределениями', fontsize=16, fontweight='bold')
-            plt.tight_layout()
-            st.pyplot(fig2)
-            
-            # Интерактивный график Plotly
-            st.subheader("Интерактивный график (Plotly)")
-            
-            fig_plotly = make_subplots(
-                rows=2, cols=2,
-                subplot_titles=('Scatter Plot: Все образцы', 'Scatter Plot',
-                               'Распределение по X', 'Распределение по Y'),
-                vertical_spacing=0.15,
-                horizontal_spacing=0.15
-            )
-            
-            # Добавляем scatter plots
-            for i, dataset in enumerate(st.session_state.datasets):
-                if dataset['active']:
-                    df = parse_data(dataset['data'], dataset['name'])
-                    if not df.empty:
-                        # Scatter plot 1
-                        fig_plotly.add_trace(
-                            go.Scatter(
-                                x=df['x'],
-                                y=df['y'],
-                                mode='markers',
-                                name=dataset['name'],
-                                marker=dict(
-                                    color=dataset['color'],
-                                    symbol=plotly_markers.get(dataset['marker'], 'circle'),
-                                    size=10,
-                                    opacity=0.7
+            if all_data_frames_local:
+                all_data = pd.concat(all_data_frames_local, ignore_index=True)
+                
+                # Обновляем автоматические значения осей, если не заданы вручную
+                if not st.session_state.x_manual:
+                    x_min_val = all_data['x'].min()
+                    x_max_val = all_data['x'].max()
+                    x_range = x_max_val - x_min_val
+                    auto_x_min = max(0, x_min_val - 0.1 * x_range) if x_range > 0 else x_min_val - 0.1
+                    auto_x_max = x_max_val + 0.1 * x_range if x_range > 0 else x_max_val + 0.1
+                    auto_x_step = max(x_range / 10, 0.1)
+                else:
+                    auto_x_min = st.session_state.x_min
+                    auto_x_max = st.session_state.x_max
+                    auto_x_step = st.session_state.x_step
+                
+                if not st.session_state.y_manual:
+                    y_min_val = all_data['y'].min()
+                    y_max_val = all_data['y'].max()
+                    y_range = y_max_val - y_min_val
+                    auto_y_min = y_min_val - 0.1 * y_range if y_range > 0 else y_min_val - 0.1
+                    auto_y_max = y_max_val + 0.1 * y_range if y_range > 0 else y_max_val + 0.1
+                    auto_y_step = max(y_range / 10, 0.1)
+                else:
+                    auto_y_min = st.session_state.y_min
+                    auto_y_max = st.session_state.y_max
+                    auto_y_step = st.session_state.y_step
+                
+                # Основной график с маргинальными распределениями
+                st.subheader("Scatter Plot с маргинальными распределениями")
+                
+                # Создаем фигуру Matplotlib
+                fig, (ax_top, ax_main) = plt.subplots(
+                    2, 2, 
+                    figsize=(12, 10),
+                    gridspec_kw={'height_ratios': [1, 3], 'width_ratios': [3, 1]},
+                    constrained_layout=True
+                )
+                
+                # Убираем лишние оси
+                ax_right = ax_main[1]
+                ax_main = ax_main[0]
+                ax_top[1].axis('off')
+                ax_top = ax_top[0]
+                
+                # Рисуем точки на основном графике
+                for i, dataset in enumerate(st.session_state.datasets):
+                    if dataset['active']:
+                        df = parse_data(dataset['data'], dataset['name'])
+                        if not df.empty:
+                            ax_main.scatter(
+                                df['x'], df['y'],
+                                color=dataset['color'],
+                                label=dataset['name'],
+                                marker=matplotlib_markers[dataset['marker']],
+                                s=50,
+                                alpha=0.7
+                            )
+                
+                # Настройки основного графика
+                ax_main.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=12)
+                ax_main.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=12)
+                if len(st.session_state.datasets) > 0:
+                    ax_main.legend(title='Наборы данных')
+                ax_main.grid(True, alpha=0.3)
+                
+                # Применяем границы осей
+                if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
+                    ax_main.set_xlim(st.session_state.x_min, st.session_state.x_max)
+                    ax_top.set_xlim(st.session_state.x_min, st.session_state.x_max)
+                elif 'auto_x_min' in locals() and 'auto_x_max' in locals():
+                    ax_main.set_xlim(auto_x_min, auto_x_max)
+                    ax_top.set_xlim(auto_x_min, auto_x_max)
+                
+                if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
+                    ax_main.set_ylim(st.session_state.y_min, st.session_state.y_max)
+                    ax_right.set_ylim(st.session_state.y_min, st.session_state.y_max)
+                elif 'auto_y_min' in locals() and 'auto_y_max' in locals():
+                    ax_main.set_ylim(auto_y_min, auto_y_max)
+                    ax_right.set_ylim(auto_y_min, auto_y_max)
+                
+                # Рисуем маргинальные распределения с улучшенной функцией плотности
+                for i, dataset in enumerate(st.session_state.datasets):
+                    if dataset['active']:
+                        df = parse_data(dataset['data'], dataset['name'])
+                        if not df.empty and len(df) > 1:
+                            color = dataset['color']
+                            
+                            # Распределение по X (верхний график)
+                            x_vals, density = estimate_density(df['x'].values)
+                            if x_vals is not None and density is not None:
+                                ax_top.fill_between(x_vals, 0, density, color=color, alpha=0.3)
+                                ax_top.plot(x_vals, density, color=color, linewidth=1.5)
+                            
+                            # Распределение по Y (правый график)
+                            y_vals, density = estimate_density(df['y'].values)
+                            if y_vals is not None and density is not None:
+                                ax_right.fill_betweenx(y_vals, 0, density, color=color, alpha=0.3)
+                                ax_right.plot(density, y_vals, color=color, linewidth=1.5)
+                
+                # Настройки маргинальных графиков
+                ax_top.set_ylabel('Density', fontsize=10)
+                ax_top.set_ylim(0, 1.1)
+                ax_top.tick_params(axis='x', labelbottom=False)
+                ax_top.grid(True, alpha=0.3)
+                
+                ax_right.set_xlabel('Density', fontsize=10)
+                ax_right.set_xlim(0, 1.1)
+                ax_right.tick_params(axis='y', labelleft=False)
+                ax_right.grid(True, alpha=0.3)
+                
+                # Заголовок
+                fig.suptitle('Scatter Plot with Marginal Densities', fontsize=14, fontweight='bold')
+                
+                st.pyplot(fig)
+                
+                # Альтернативные графики
+                st.subheader("Альтернативное представление")
+                
+                fig2, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 12))
+                
+                # 1. Основной scatter plot
+                for i, dataset in enumerate(st.session_state.datasets):
+                    if dataset['active']:
+                        df = parse_data(dataset['data'], dataset['name'])
+                        if not df.empty:
+                            ax1.scatter(df['x'], df['y'], 
+                                      color=dataset['color'], 
+                                      label=dataset['name'],
+                                      marker=matplotlib_markers[dataset['marker']],
+                                      s=100, alpha=0.7)
+                
+                ax1.set_title('Scatter Plot: Все образцы')
+                ax1.set_xlabel(format_axis_label(st.session_state.x_axis_label))
+                ax1.set_ylabel(format_axis_label(st.session_state.y_axis_label))
+                if len(st.session_state.datasets) > 0:
+                    ax1.legend(title='Группа')
+                ax1.grid(True, alpha=0.3)
+                
+                # Применяем границы осей
+                if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
+                    ax1.set_xlim(st.session_state.x_min, st.session_state.x_max)
+                    ax3.set_xlim(st.session_state.x_min, st.session_state.x_max)
+                elif 'auto_x_min' in locals() and 'auto_x_max' in locals():
+                    ax1.set_xlim(auto_x_min, auto_x_max)
+                    ax3.set_xlim(auto_x_min, auto_x_max)
+                
+                if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
+                    ax1.set_ylim(st.session_state.y_min, st.session_state.y_max)
+                    ax4.set_ylim(st.session_state.y_min, st.session_state.y_max)
+                elif 'auto_y_min' in locals() and 'auto_y_max' in locals():
+                    ax1.set_ylim(auto_y_min, auto_y_max)
+                    ax4.set_ylim(auto_y_min, auto_y_max)
+                
+                # 2. Второй scatter plot
+                for i, dataset in enumerate(st.session_state.datasets):
+                    if dataset['active']:
+                        df = parse_data(dataset['data'], dataset['name'])
+                        if not df.empty:
+                            ax2.scatter(df['x'], df['y'], 
+                                      color=dataset['color'], 
+                                      label=dataset['name'],
+                                      marker=matplotlib_markers[dataset['marker']],
+                                      s=100, alpha=0.7)
+                
+                ax2.set_title('Scatter Plot')
+                ax2.set_xlabel(format_axis_label(st.session_state.x_axis_label))
+                ax2.set_ylabel(format_axis_label(st.session_state.y_axis_label))
+                if len(st.session_state.datasets) > 0:
+                    ax2.legend(title='Группа')
+                ax2.grid(True, alpha=0.3)
+                
+                # 3. KDE для X
+                for i, dataset in enumerate(st.session_state.datasets):
+                    if dataset['active']:
+                        df = parse_data(dataset['data'], dataset['name'])
+                        if not df.empty and len(df) > 1:
+                            color = dataset['color']
+                            x_vals, density = estimate_density(df['x'].values)
+                            if x_vals is not None and density is not None:
+                                ax3.fill_between(x_vals, 0, density, color=color, alpha=0.3)
+                                ax3.plot(x_vals, density, color=color, linewidth=2, label=dataset['name'])
+                
+                ax3.set_title('Распределение по X')
+                ax3.set_xlabel(format_axis_label(st.session_state.x_axis_label))
+                ax3.set_ylabel('Нормированная плотность')
+                if len(st.session_state.datasets) > 0:
+                    ax3.legend(title='Группа')
+                ax3.grid(True, alpha=0.3)
+                
+                # 4. KDE для Y
+                for i, dataset in enumerate(st.session_state.datasets):
+                    if dataset['active']:
+                        df = parse_data(dataset['data'], dataset['name'])
+                        if not df.empty and len(df) > 1:
+                            color = dataset['color']
+                            y_vals, density = estimate_density(df['y'].values)
+                            if y_vals is not None and density is not None:
+                                ax4.fill_between(y_vals, 0, density, color=color, alpha=0.3)
+                                ax4.plot(y_vals, density, color=color, linewidth=2, label=dataset['name'])
+                
+                ax4.set_title('Распределение по Y')
+                ax4.set_xlabel(format_axis_label(st.session_state.y_axis_label))
+                ax4.set_ylabel('Нормированная плотность')
+                if len(st.session_state.datasets) > 0:
+                    ax4.legend(title='Группа')
+                ax4.grid(True, alpha=0.3)
+                
+                plt.suptitle('Анализ данных с маргинальными распределениями', fontsize=16, fontweight='bold')
+                plt.tight_layout()
+                st.pyplot(fig2)
+                
+                # Интерактивный график Plotly
+                st.subheader("Интерактивный график (Plotly)")
+                
+                fig_plotly = make_subplots(
+                    rows=2, cols=2,
+                    subplot_titles=('Scatter Plot: Все образцы', 'Scatter Plot',
+                                   'Распределение по X', 'Распределение по Y'),
+                    vertical_spacing=0.15,
+                    horizontal_spacing=0.15
+                )
+                
+                # Добавляем scatter plots
+                for i, dataset in enumerate(st.session_state.datasets):
+                    if dataset['active']:
+                        df = parse_data(dataset['data'], dataset['name'])
+                        if not df.empty:
+                            # Scatter plot 1
+                            fig_plotly.add_trace(
+                                go.Scatter(
+                                    x=df['x'],
+                                    y=df['y'],
+                                    mode='markers',
+                                    name=dataset['name'],
+                                    marker=dict(
+                                        color=dataset['color'],
+                                        symbol=plotly_markers.get(dataset['marker'], 'circle'),
+                                        size=10,
+                                        opacity=0.7
+                                    ),
+                                    showlegend=True
                                 ),
-                                showlegend=True
-                            ),
-                            row=1, col=1
-                        )
-                        
-                        # Scatter plot 2
-                        fig_plotly.add_trace(
-                            go.Scatter(
-                                x=df['x'],
-                                y=df['y'],
-                                mode='markers',
-                                name=dataset['name'],
-                                marker=dict(
-                                    color=dataset['color'],
-                                    symbol=plotly_markers[dataset['marker']],
-                                    size=10,
-                                    opacity=0.7
+                                row=1, col=1
+                            )
+                            
+                            # Scatter plot 2
+                            fig_plotly.add_trace(
+                                go.Scatter(
+                                    x=df['x'],
+                                    y=df['y'],
+                                    mode='markers',
+                                    name=dataset['name'],
+                                    marker=dict(
+                                        color=dataset['color'],
+                                        symbol=plotly_markers[dataset['marker']],
+                                        size=10,
+                                        opacity=0.7
+                                    ),
+                                    showlegend=False
                                 ),
-                                showlegend=False
-                            ),
-                            row=1, col=2
-                        )
-            
-            # Обновляем layout
-            fig_plotly.update_xaxes(title_text=format_axis_label(st.session_state.x_axis_label), row=1, col=1)
-            fig_plotly.update_yaxes(title_text=format_axis_label(st.session_state.y_axis_label), row=1, col=1)
-            fig_plotly.update_xaxes(title_text=format_axis_label(st.session_state.x_axis_label), row=1, col=2)
-            fig_plotly.update_yaxes(title_text=format_axis_label(st.session_state.y_axis_label), row=1, col=2)
-            
-            # Применяем границы осей
-            if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
-                fig_plotly.update_xaxes(range=[st.session_state.x_min, st.session_state.x_max], row=1, col=1)
-                fig_plotly.update_xaxes(range=[st.session_state.x_min, st.session_state.x_max], row=1, col=2)
-            elif 'auto_x_min' in locals() and 'auto_x_max' in locals():
-                fig_plotly.update_xaxes(range=[auto_x_min, auto_x_max], row=1, col=1)
-                fig_plotly.update_xaxes(range=[auto_x_min, auto_x_max], row=1, col=2)
-            
-            if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
-                fig_plotly.update_yaxes(range=[st.session_state.y_min, st.session_state.y_max], row=1, col=1)
-                fig_plotly.update_yaxes(range=[st.session_state.y_min, st.session_state.y_max], row=1, col=2)
-            elif 'auto_y_min' in locals() and 'auto_y_max' in locals():
-                fig_plotly.update_yaxes(range=[auto_y_min, auto_y_max], row=1, col=1)
-                fig_plotly.update_yaxes(range=[auto_y_min, auto_y_max], row=1, col=2)
-            
-            fig_plotly.update_layout(
-                height=800,
-                title_text="Интерактивная визуализация данных",
-                showlegend=True,
-                hovermode='closest'
-            )
-            
-            st.plotly_chart(fig_plotly, use_container_width=True)
-            
-        else:
-            st.warning("Нет данных для отображения! Пожалуйста, введите данные во вкладке 'Данные'.")
+                                row=1, col=2
+                            )
+                
+                # Обновляем layout
+                fig_plotly.update_xaxes(title_text=format_axis_label(st.session_state.x_axis_label), row=1, col=1)
+                fig_plotly.update_yaxes(title_text=format_axis_label(st.session_state.y_axis_label), row=1, col=1)
+                fig_plotly.update_xaxes(title_text=format_axis_label(st.session_state.x_axis_label), row=1, col=2)
+                fig_plotly.update_yaxes(title_text=format_axis_label(st.session_state.y_axis_label), row=1, col=2)
+                
+                # Применяем границы осей
+                if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
+                    fig_plotly.update_xaxes(range=[st.session_state.x_min, st.session_state.x_max], row=1, col=1)
+                    fig_plotly.update_xaxes(range=[st.session_state.x_min, st.session_state.x_max], row=1, col=2)
+                elif 'auto_x_min' in locals() and 'auto_x_max' in locals():
+                    fig_plotly.update_xaxes(range=[auto_x_min, auto_x_max], row=1, col=1)
+                    fig_plotly.update_xaxes(range=[auto_x_min, auto_x_max], row=1, col=2)
+                
+                if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
+                    fig_plotly.update_yaxes(range=[st.session_state.y_min, st.session_state.y_max], row=1, col=1)
+                    fig_plotly.update_yaxes(range=[st.session_state.y_min, st.session_state.y_max], row=1, col=2)
+                elif 'auto_y_min' in locals() and 'auto_y_max' in locals():
+                    fig_plotly.update_yaxes(range=[auto_y_min, auto_y_max], row=1, col=1)
+                    fig_plotly.update_yaxes(range=[auto_y_min, auto_y_max], row=1, col=2)
+                
+                fig_plotly.update_layout(
+                    height=800,
+                    title_text="Интерактивная визуализация данных",
+                    showlegend=True,
+                    hovermode='closest'
+                )
+                
+                st.plotly_chart(fig_plotly, use_container_width=True)
 
 with tab3:
     st.header("Статистика данных")
@@ -1138,17 +1171,18 @@ with tab3:
                 st.markdown(status)
                 
     else:
-        st.info("Постройте графики во вкладке 'Графики' для отображения статистики.")
+        st.info("Нет данных для отображения статистики. Добавьте наборы данных и введите данные во вкладке 'Данные', затем постройте графики во вкладке 'Графики'.")
 
 # Футер
 st.markdown("---")
 st.markdown("### Инструкция по использованию:")
 st.markdown("""
-1. **Вкладка 'Данные'**: Настройте наборы данных, введите значения X и Y через табуляцию
-2. **Боковая панель**: 
+1. **Боковая панель**: 
+   - Нажмите "➕ Добавить новый набор данных" для создания наборов
    - Задайте названия осей и границы (опционально)
-   - Загрузите ранее экспортированные данные с настройками
+   - Загрузите ранее экспортированные данные с настройками (опционально)
    - Нажмите кнопку "Применить загруженные данные" для использования импортированных настроек
+2. **Вкладка 'Данные'**: Введите значения X и Y через табуляцию для каждого набора
 3. **Вкладка 'Графики'**: Нажмите кнопку "Построить графики" для визуализации
 4. **Вкладка 'Статистика'**: 
    - Просмотрите статистику данных
