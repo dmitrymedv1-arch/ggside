@@ -813,7 +813,12 @@ with tab2:
                 ax_main = ax_main[0]
                 ax_top[1].axis('off')
                 ax_top = ax_top[0]
-                
+
+
+                set_bold_axes(ax_top)
+                set_bold_axes(ax_main)
+                set_bold_axes(ax_right)
+
                 # Рисуем точки на основном графике
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
@@ -889,6 +894,12 @@ with tab2:
                 st.subheader("Альтернативное представление")
                 
                 fig2, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 12))
+
+
+                set_bold_axes(ax1)
+                set_bold_axes(ax2)
+                set_bold_axes(ax3)
+                set_bold_axes(ax4)
                 
                 # 1. Основной scatter plot
                 for i, dataset in enumerate(st.session_state.datasets):
@@ -1208,4 +1219,5 @@ st.markdown("""
 
 **Важно**: Файл "Скачать ВСЕ данные с настройками" содержит все параметры и может быть загружен обратно через боковую панель.
 """)
+
 
