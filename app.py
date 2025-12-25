@@ -966,7 +966,7 @@ with tab2:
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
-                        if not df.empty():
+                        if not df.empty:
                             ax_main.scatter(
                                 df['x'], df['y'],
                                 color=dataset['color'],
@@ -1383,3 +1383,4 @@ st.markdown("""
 
 **Важно**: Файл "Скачать ВСЕ данные с настройками" содержит все параметры (включая размер маркеров и легенды) и может быть загружен обратно через боковую панель.
 """)
+
