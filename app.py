@@ -88,7 +88,9 @@ def estimate_density(data, extend_range=True, padding_factor=0.2):
     return None, None
 
 # Функция для экспорта всех данных с настройками
-def export_all_data_with_settings(datasets, x_label, y_label):
+def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual, 
+                                 x_min_val, x_max_val, x_step_val, 
+                                 y_min_val, y_max_val, y_step_val):
     """Создает CSV файл с данными и настройками"""
     
     # Создаем структуру для экспорта
@@ -99,6 +101,16 @@ def export_all_data_with_settings(datasets, x_label, y_label):
             'y_axis_label': y_label,
             'num_datasets': len(datasets),
             'export_timestamp': pd.Timestamp.now().isoformat()
+        },
+        'axis_settings': {
+            'x_manual': x_manual,
+            'y_manual': y_manual,
+            'x_min': x_min_val if x_min_val is not None else '',
+            'x_max': x_max_val if x_max_val is not None else '',
+            'x_step': x_step_val if x_step_val is not None else '',
+            'y_min': y_min_val if y_min_val is not None else '',
+            'y_max': y_max_val if y_max_val is not None else '',
+            'y_step': y_step_val if y_step_val is not None else ''
         },
         'settings': [],
         'data': []
@@ -139,14 +151,27 @@ def export_all_data_with_settings(datasets, x_label, y_label):
     lines.append(f"export_timestamp: {export_dict['metadata']['export_timestamp']}")
     lines.append("")
     
-    # 2. Настройки наборов данных
+    # 2. Настройки осей
+    lines.append("# AXIS SETTINGS SECTION")
+    lines.append("setting,value")
+    lines.append(f"x_manual,{export_dict['axis_settings']['x_manual']}")
+    lines.append(f"y_manual,{export_dict['axis_settings']['y_manual']}")
+    lines.append(f"x_min,{export_dict['axis_settings']['x_min']}")
+    lines.append(f"x_max,{export_dict['axis_settings']['x_max']}")
+    lines.append(f"x_step,{export_dict['axis_settings']['x_step']}")
+    lines.append(f"y_min,{export_dict['axis_settings']['y_min']}")
+    lines.append(f"y_max,{export_dict['axis_settings']['y_max']}")
+    lines.append(f"y_step,{export_dict['axis_settings']['y_step']}")
+    lines.append("")
+    
+    # 3. Настройки наборов данных
     lines.append("# DATASET SETTINGS SECTION")
     lines.append("index,name,color,marker,active")
     for settings in export_dict['settings']:
         lines.append(f"{settings['dataset_index']},{settings['name']},{settings['color']},{settings['marker']},{settings['active']}")
     lines.append("")
     
-    # 3. Данные
+    # 4. Данные
     lines.append("# DATA POINTS SECTION")
     lines.append("dataset_index,dataset_name,x,y")
     for data_point in export_dict['data']:
@@ -163,6 +188,14 @@ def import_data_with_settings(file_content):
     # Инициализируем переменные
     x_axis_label = "Temperature (°C)"
     y_axis_label = "Conductivity (S cm⁻¹)"
+    x_manual = False
+    y_manual = False
+    x_min = None
+    x_max = None
+    x_step = None
+    y_min = None
+    y_max = None
+    y_step = None
     datasets_settings = []
     data_points = []
     
@@ -179,6 +212,9 @@ def import_data_with_settings(file_content):
         if line.startswith("# META DATA SECTION"):
             current_section = "metadata"
             continue
+        elif line.startswith("# AXIS SETTINGS SECTION"):
+            current_section = "axis_settings"
+            continue
         elif line.startswith("# DATASET SETTINGS SECTION"):
             current_section = "settings"
             continue
@@ -194,6 +230,35 @@ def import_data_with_settings(file_content):
                 x_axis_label = line.split(":", 1)[1].strip()
             elif line.startswith("y_axis_label:"):
                 y_axis_label = line.split(":", 1)[1].strip()
+        
+        # Обрабатываем настройки осей
+        elif current_section == "axis_settings":
+            if line.startswith("setting,value"):
+                continue
+            parts = line.split(',')
+            if len(parts) >= 2:
+                setting_name = parts[0].strip()
+                setting_value = parts[1].strip()
+                
+                try:
+                    if setting_name == "x_manual":
+                        x_manual = setting_value.lower() == 'true'
+                    elif setting_name == "y_manual":
+                        y_manual = setting_value.lower() == 'true'
+                    elif setting_name == "x_min" and setting_value:
+                        x_min = float(setting_value)
+                    elif setting_name == "x_max" and setting_value:
+                        x_max = float(setting_value)
+                    elif setting_name == "x_step" and setting_value:
+                        x_step = float(setting_value)
+                    elif setting_name == "y_min" and setting_value:
+                        y_min = float(setting_value)
+                    elif setting_name == "y_max" and setting_value:
+                        y_max = float(setting_value)
+                    elif setting_name == "y_step" and setting_value:
+                        y_step = float(setting_value)
+                except:
+                    continue
         
         # Обрабатываем настройки
         elif current_section == "settings":
@@ -257,7 +322,18 @@ def import_data_with_settings(file_content):
         }
         datasets.append(dataset)
     
-    return datasets, x_axis_label, y_axis_label
+    axis_settings = {
+        'x_manual': x_manual,
+        'y_manual': y_manual,
+        'x_min': x_min,
+        'x_max': x_max,
+        'x_step': x_step,
+        'y_min': y_min,
+        'y_max': y_max,
+        'y_step': y_step
+    }
+    
+    return datasets, x_axis_label, y_axis_label, axis_settings
 
 # Основной заголовок
 st.title("📊 Визуализация данных с маргинальными распределениями")
@@ -295,6 +371,31 @@ if 'x_axis_label' not in st.session_state:
 if 'y_axis_label' not in st.session_state:
     st.session_state.y_axis_label = 'Conductivity (S cm⁻¹)'
 
+# Инициализация состояния для настроек осей
+if 'x_manual' not in st.session_state:
+    st.session_state.x_manual = False
+
+if 'y_manual' not in st.session_state:
+    st.session_state.y_manual = False
+
+if 'x_min' not in st.session_state:
+    st.session_state.x_min = None
+
+if 'x_max' not in st.session_state:
+    st.session_state.x_max = None
+
+if 'x_step' not in st.session_state:
+    st.session_state.x_step = None
+
+if 'y_min' not in st.session_state:
+    st.session_state.y_min = None
+
+if 'y_max' not in st.session_state:
+    st.session_state.y_max = None
+
+if 'y_step' not in st.session_state:
+    st.session_state.y_step = None
+
 # Инициализация состояния для импортированных данных
 if 'imported_file_content' not in st.session_state:
     st.session_state.imported_file_content = None
@@ -307,6 +408,9 @@ if 'imported_x_label' not in st.session_state:
 
 if 'imported_y_label' not in st.session_state:
     st.session_state.imported_y_label = None
+
+if 'imported_axis_settings' not in st.session_state:
+    st.session_state.imported_axis_settings = None
 
 # Доступные маркеры для matplotlib и Plotly
 matplotlib_markers = {
@@ -356,13 +460,14 @@ with st.sidebar:
     if uploaded_file is not None:
         try:
             file_content = uploaded_file.getvalue().decode('utf-8')
-            imported_datasets, imported_x_label, imported_y_label = import_data_with_settings(file_content)
+            imported_datasets, imported_x_label, imported_y_label, imported_axis_settings = import_data_with_settings(file_content)
             
             if imported_datasets:
                 st.session_state.imported_file_content = file_content
                 st.session_state.imported_datasets = imported_datasets
                 st.session_state.imported_x_label = imported_x_label
                 st.session_state.imported_y_label = imported_y_label
+                st.session_state.imported_axis_settings = imported_axis_settings
                 
                 st.success(f"Файл загружен! Обнаружено {len(imported_datasets)} наборов данных.")
                 st.info("Нажмите кнопку 'Применить загруженные данные' ниже, чтобы использовать эти настройки.")
@@ -372,15 +477,29 @@ with st.sidebar:
     # Кнопка для применения загруженных данных
     if st.session_state.imported_datasets is not None:
         if st.button("✅ Применить загруженные данные", type="primary"):
-            st.session_state.datasets = st.session_state.imported_datasets
+            # ПОЛНОСТЬЮ заменяем datasets на импортированные
+            st.session_state.datasets = st.session_state.imported_datasets.copy()
+            
             st.session_state.x_axis_label = st.session_state.imported_x_label
             st.session_state.y_axis_label = st.session_state.imported_y_label
+            
+            # Применяем настройки осей
+            if st.session_state.imported_axis_settings:
+                st.session_state.x_manual = st.session_state.imported_axis_settings['x_manual']
+                st.session_state.y_manual = st.session_state.imported_axis_settings['y_manual']
+                st.session_state.x_min = st.session_state.imported_axis_settings['x_min']
+                st.session_state.x_max = st.session_state.imported_axis_settings['x_max']
+                st.session_state.x_step = st.session_state.imported_axis_settings['x_step']
+                st.session_state.y_min = st.session_state.imported_axis_settings['y_min']
+                st.session_state.y_max = st.session_state.imported_axis_settings['y_max']
+                st.session_state.y_step = st.session_state.imported_axis_settings['y_step']
             
             # Сбрасываем состояние импорта
             st.session_state.imported_file_content = None
             st.session_state.imported_datasets = None
             st.session_state.imported_x_label = None
             st.session_state.imported_y_label = None
+            st.session_state.imported_axis_settings = None
             
             st.success("Данные успешно применены! Страница будет перезагружена.")
             st.rerun()
@@ -389,11 +508,13 @@ with st.sidebar:
     st.subheader("Настройка осей")
     st.session_state.x_axis_label = st.text_input(
         "Название оси X",
-        value=st.session_state.x_axis_label
+        value=st.session_state.x_axis_label,
+        key="x_axis_label_input"
     )
     st.session_state.y_axis_label = st.text_input(
         "Название оси Y",
-        value=st.session_state.y_axis_label
+        value=st.session_state.y_axis_label,
+        key="y_axis_label_input"
     )
     
     # Управление осями
@@ -401,31 +522,69 @@ with st.sidebar:
     
     col1, col2 = st.columns(2)
     with col1:
-        x_manual = st.checkbox("Настроить ось X", value=False)
+        x_manual = st.checkbox("Настроить ось X", 
+                              value=st.session_state.x_manual,
+                              key="x_manual_checkbox")
+        st.session_state.x_manual = x_manual
     with col2:
-        y_manual = st.checkbox("Настроить ось Y", value=False)
+        y_manual = st.checkbox("Настроить ось Y", 
+                              value=st.session_state.y_manual,
+                              key="y_manual_checkbox")
+        st.session_state.y_manual = y_manual
     
     if x_manual:
         col1, col2, col3 = st.columns(3)
         with col1:
-            x_min = st.number_input("X мин", value=0.0, step=0.1)
+            x_min = st.number_input("X мин", 
+                                   value=float(st.session_state.x_min) if st.session_state.x_min is not None else 0.0, 
+                                   step=0.1,
+                                   key="x_min_input")
+            st.session_state.x_min = x_min
         with col2:
-            x_max = st.number_input("X макс", value=1.0, step=0.1)
+            x_max = st.number_input("X макс", 
+                                   value=float(st.session_state.x_max) if st.session_state.x_max is not None else 1.0, 
+                                   step=0.1,
+                                   key="x_max_input")
+            st.session_state.x_max = x_max
         with col3:
-            x_step = st.number_input("X шаг", value=0.1, step=0.1, min_value=0.01)
+            x_step = st.number_input("X шаг", 
+                                    value=float(st.session_state.x_step) if st.session_state.x_step is not None else 0.1, 
+                                    step=0.1, 
+                                    min_value=0.01,
+                                    key="x_step_input")
+            st.session_state.x_step = x_step
     else:
-        x_min = x_max = x_step = None
+        # Сбрасываем значения при отключении ручной настройки
+        st.session_state.x_min = None
+        st.session_state.x_max = None
+        st.session_state.x_step = None
     
     if y_manual:
         col1, col2, col3 = st.columns(3)
         with col1:
-            y_min = st.number_input("Y мин", value=-10.0, step=0.1)
+            y_min = st.number_input("Y мин", 
+                                   value=float(st.session_state.y_min) if st.session_state.y_min is not None else -10.0, 
+                                   step=0.1,
+                                   key="y_min_input")
+            st.session_state.y_min = y_min
         with col2:
-            y_max = st.number_input("Y макс", value=0.0, step=0.1)
+            y_max = st.number_input("Y макс", 
+                                   value=float(st.session_state.y_max) if st.session_state.y_max is not None else 0.0, 
+                                   step=0.1,
+                                   key="y_max_input")
+            st.session_state.y_max = y_max
         with col3:
-            y_step = st.number_input("Y шаг", value=1.0, step=0.1, min_value=0.01)
+            y_step = st.number_input("Y шаг", 
+                                    value=float(st.session_state.y_step) if st.session_state.y_step is not None else 1.0, 
+                                    step=0.1, 
+                                    min_value=0.01,
+                                    key="y_step_input")
+            st.session_state.y_step = y_step
     else:
-        y_min = y_max = y_step = None
+        # Сбрасываем значения при отключении ручной настройки
+        st.session_state.y_min = None
+        st.session_state.y_max = None
+        st.session_state.y_step = None
     
     # Управление наборами данных
     st.subheader("Управление наборами данных")
@@ -513,22 +672,30 @@ with tab1:
     if all_data_frames:
         all_data = pd.concat(all_data_frames, ignore_index=True)
         
-        # Обновляем автоматические значения осей
-        if not x_manual:
+        # Обновляем автоматические значения осей, если не заданы вручную
+        if not st.session_state.x_manual:
             x_min_val = all_data['x'].min()
             x_max_val = all_data['x'].max()
             x_range = x_max_val - x_min_val
-            x_min = max(0, x_min_val - 0.1 * x_range) if x_range > 0 else x_min_val - 0.1
-            x_max = x_max_val + 0.1 * x_range if x_range > 0 else x_max_val + 0.1
-            x_step = max(x_range / 10, 0.1)
+            auto_x_min = max(0, x_min_val - 0.1 * x_range) if x_range > 0 else x_min_val - 0.1
+            auto_x_max = x_max_val + 0.1 * x_range if x_range > 0 else x_max_val + 0.1
+            auto_x_step = max(x_range / 10, 0.1)
+        else:
+            auto_x_min = st.session_state.x_min
+            auto_x_max = st.session_state.x_max
+            auto_x_step = st.session_state.x_step
         
-        if not y_manual:
+        if not st.session_state.y_manual:
             y_min_val = all_data['y'].min()
             y_max_val = all_data['y'].max()
             y_range = y_max_val - y_min_val
-            y_min = y_min_val - 0.1 * y_range if y_range > 0 else y_min_val - 0.1
-            y_max = y_max_val + 0.1 * y_range if y_range > 0 else y_max_val + 0.1
-            y_step = max(y_range / 10, 0.1)
+            auto_y_min = y_min_val - 0.1 * y_range if y_range > 0 else y_min_val - 0.1
+            auto_y_max = y_max_val + 0.1 * y_range if y_range > 0 else y_max_val + 0.1
+            auto_y_step = max(y_range / 10, 0.1)
+        else:
+            auto_y_min = st.session_state.y_min
+            auto_y_max = st.session_state.y_max
+            auto_y_step = st.session_state.y_step
 
 with tab2:
     st.header("Визуализация данных")
@@ -574,12 +741,19 @@ with tab2:
             ax_main.grid(True, alpha=0.3)
             
             # Применяем границы осей
-            if x_min is not None and x_max is not None:
-                ax_main.set_xlim(x_min, x_max)
-                ax_top.set_xlim(x_min, x_max)
-            if y_min is not None and y_max is not None:
-                ax_main.set_ylim(y_min, y_max)
-                ax_right.set_ylim(y_min, y_max)
+            if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
+                ax_main.set_xlim(st.session_state.x_min, st.session_state.x_max)
+                ax_top.set_xlim(st.session_state.x_min, st.session_state.x_max)
+            elif 'auto_x_min' in locals() and 'auto_x_max' in locals():
+                ax_main.set_xlim(auto_x_min, auto_x_max)
+                ax_top.set_xlim(auto_x_min, auto_x_max)
+            
+            if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
+                ax_main.set_ylim(st.session_state.y_min, st.session_state.y_max)
+                ax_right.set_ylim(st.session_state.y_min, st.session_state.y_max)
+            elif 'auto_y_min' in locals() and 'auto_y_max' in locals():
+                ax_main.set_ylim(auto_y_min, auto_y_max)
+                ax_right.set_ylim(auto_y_min, auto_y_max)
             
             # Рисуем маргинальные распределения
             for i, dataset in enumerate(st.session_state.datasets):
@@ -639,12 +813,19 @@ with tab2:
             ax1.grid(True, alpha=0.3)
             
             # Применяем границы осей
-            if x_min is not None and x_max is not None:
-                ax1.set_xlim(x_min, x_max)
-                ax3.set_xlim(x_min, x_max)
-            if y_min is not None and y_max is not None:
-                ax1.set_ylim(y_min, y_max)
-                ax4.set_ylim(y_min, y_max)
+            if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
+                ax1.set_xlim(st.session_state.x_min, st.session_state.x_max)
+                ax3.set_xlim(st.session_state.x_min, st.session_state.x_max)
+            elif 'auto_x_min' in locals() and 'auto_x_max' in locals():
+                ax1.set_xlim(auto_x_min, auto_x_max)
+                ax3.set_xlim(auto_x_min, auto_x_max)
+            
+            if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
+                ax1.set_ylim(st.session_state.y_min, st.session_state.y_max)
+                ax4.set_ylim(st.session_state.y_min, st.session_state.y_max)
+            elif 'auto_y_min' in locals() and 'auto_y_max' in locals():
+                ax1.set_ylim(auto_y_min, auto_y_max)
+                ax4.set_ylim(auto_y_min, auto_y_max)
             
             # 2. Второй scatter plot
             for i, dataset in enumerate(st.session_state.datasets):
@@ -760,12 +941,19 @@ with tab2:
             fig_plotly.update_yaxes(title_text=format_axis_label(st.session_state.y_axis_label), row=1, col=2)
             
             # Применяем границы осей
-            if x_min is not None and x_max is not None:
-                fig_plotly.update_xaxes(range=[x_min, x_max], row=1, col=1)
-                fig_plotly.update_xaxes(range=[x_min, x_max], row=1, col=2)
-            if y_min is not None and y_max is not None:
-                fig_plotly.update_yaxes(range=[y_min, y_max], row=1, col=1)
-                fig_plotly.update_yaxes(range=[y_min, y_max], row=1, col=2)
+            if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
+                fig_plotly.update_xaxes(range=[st.session_state.x_min, st.session_state.x_max], row=1, col=1)
+                fig_plotly.update_xaxes(range=[st.session_state.x_min, st.session_state.x_max], row=1, col=2)
+            elif 'auto_x_min' in locals() and 'auto_x_max' in locals():
+                fig_plotly.update_xaxes(range=[auto_x_min, auto_x_max], row=1, col=1)
+                fig_plotly.update_xaxes(range=[auto_x_min, auto_x_max], row=1, col=2)
+            
+            if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
+                fig_plotly.update_yaxes(range=[st.session_state.y_min, st.session_state.y_max], row=1, col=1)
+                fig_plotly.update_yaxes(range=[st.session_state.y_min, st.session_state.y_max], row=1, col=2)
+            elif 'auto_y_min' in locals() and 'auto_y_max' in locals():
+                fig_plotly.update_yaxes(range=[auto_y_min, auto_y_max], row=1, col=1)
+                fig_plotly.update_yaxes(range=[auto_y_min, auto_y_max], row=1, col=2)
             
             fig_plotly.update_layout(
                 height=800,
@@ -825,7 +1013,15 @@ with tab3:
             all_data_with_settings = export_all_data_with_settings(
                 st.session_state.datasets,
                 st.session_state.x_axis_label,
-                st.session_state.y_axis_label
+                st.session_state.y_axis_label,
+                st.session_state.x_manual,
+                st.session_state.y_manual,
+                st.session_state.x_min,
+                st.session_state.x_max,
+                st.session_state.x_step,
+                st.session_state.y_min,
+                st.session_state.y_max,
+                st.session_state.y_step
             )
             
             st.download_button(
@@ -848,15 +1044,27 @@ with tab3:
         
         with col1:
             st.info(f"**Ось X:** {format_axis_label(st.session_state.x_axis_label)}")
-            st.write(f"Минимум: {x_min:.3f}" if x_min is not None else "Автоопределение")
-            st.write(f"Максимум: {x_max:.3f}" if x_max is not None else "Автоопределение")
-            st.write(f"Шаг: {x_step:.3f}" if x_step is not None else "Автоопределение")
+            if st.session_state.x_manual:
+                st.write(f"Ручная настройка: ВКЛ")
+                st.write(f"Минимум: {st.session_state.x_min:.3f}" if st.session_state.x_min is not None else "Не задано")
+                st.write(f"Максимум: {st.session_state.x_max:.3f}" if st.session_state.x_max is not None else "Не задано")
+                st.write(f"Шаг: {st.session_state.x_step:.3f}" if st.session_state.x_step is not None else "Не задано")
+            else:
+                st.write("Ручная настройка: ВЫКЛ")
+                if 'auto_x_min' in locals() and 'auto_x_max' in locals():
+                    st.write(f"Автоопределение: от {auto_x_min:.3f} до {auto_x_max:.3f}")
         
         with col2:
             st.info(f"**Ось Y:** {format_axis_label(st.session_state.y_axis_label)}")
-            st.write(f"Минимум: {y_min:.3f}" if y_min is not None else "Автоопределение")
-            st.write(f"Максимум: {y_max:.3f}" if y_max is not None else "Автоопределение")
-            st.write(f"Шаг: {y_step:.3f}" if y_step is not None else "Автоопределение")
+            if st.session_state.y_manual:
+                st.write(f"Ручная настройка: ВКЛ")
+                st.write(f"Минимум: {st.session_state.y_min:.3f}" if st.session_state.y_min is not None else "Не задано")
+                st.write(f"Максимум: {st.session_state.y_max:.3f}" if st.session_state.y_max is not None else "Не задано")
+                st.write(f"Шаг: {st.session_state.y_step:.3f}" if st.session_state.y_step is not None else "Не задано")
+            else:
+                st.write("Ручная настройка: ВЫКЛ")
+                if 'auto_y_min' in locals() and 'auto_y_max' in locals():
+                    st.write(f"Автоопределение: от {auto_y_min:.3f} до {auto_y_max:.3f}")
         
         # Информация о наборах данных
         st.subheader("Информация о наборах данных")
