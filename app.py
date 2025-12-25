@@ -94,7 +94,7 @@ if 'datasets' not in st.session_state:
     st.session_state.datasets = [
         {
             'name': 'Sample x',
-            'data': '0\t-5\n0.2\t-7\n0.1\t-7\n0.15\t-7.5',
+            '0\t-5\n0.2\t-7\n0.1\t-7\n0.15\t-7.5',
             'color': '#E41A1C',
             'marker': 'circle',
             'active': True
@@ -121,7 +121,21 @@ if 'x_axis_label' not in st.session_state:
 if 'y_axis_label' not in st.session_state:
     st.session_state.y_axis_label = 'Conductivity (S cm⁻¹)'
 
-# Доступные маркеры Plotly
+# Доступные маркеры для matplotlib и Plotly
+matplotlib_markers = {
+    'circle': 'o',
+    'square': 's',
+    'triangle-up': '^',
+    'triangle-down': 'v',
+    'diamond': 'D',
+    'pentagon': 'p',
+    'hexagon': 'h',
+    'star': '*',
+    'plus': '+',
+    'x': 'x',
+    'point': '.'
+}
+
 plotly_markers = {
     'circle': 'circle',
     'square': 'square',
@@ -131,8 +145,9 @@ plotly_markers = {
     'pentagon': 'pentagon',
     'hexagon': 'hexagon',
     'star': 'star',
-    'cross': 'cross',
-    'x': 'x'
+    'plus': 'cross',
+    'x': 'x',
+    'point': 'circle-open'  # альтернатива для точки в plotly
 }
 
 # Цвета по умолчанию
@@ -243,8 +258,8 @@ with tab1:
             with col3:
                 marker = st.selectbox(
                     "Маркер",
-                    options=list(plotly_markers.keys()),
-                    index=list(plotly_markers.keys()).index(dataset['marker']),
+                    options=list(matplotlib_markers.keys()),
+                    index=list(matplotlib_markers.keys()).index(dataset['marker']),
                     key=f"marker_{i}"
                 )
                 st.session_state.datasets[i]['marker'] = marker
@@ -319,7 +334,7 @@ with tab2:
                             df['x'], df['y'],
                             color=dataset['color'],
                             label=dataset['name'],
-                            marker=dataset['marker'][0] if dataset['marker'] in ['circle', 'square', 'triangle-up'] else 'o',
+                            marker=matplotlib_markers[dataset['marker']],
                             s=50,
                             alpha=0.7
                         )
@@ -386,7 +401,7 @@ with tab2:
                         ax1.scatter(df['x'], df['y'], 
                                   color=dataset['color'], 
                                   label=dataset['name'],
-                                  marker=dataset['marker'][0] if dataset['marker'] in ['circle', 'square', 'triangle-up'] else 'o',
+                                  marker=matplotlib_markers[dataset['marker']],
                                   s=100, alpha=0.7)
             
             ax1.set_title('Scatter Plot: Все образцы')
@@ -411,7 +426,7 @@ with tab2:
                         ax2.scatter(df['x'], df['y'], 
                                   color=dataset['color'], 
                                   label=dataset['name'],
-                                  marker=dataset['marker'][0] if dataset['marker'] in ['circle', 'square', 'triangle-up'] else 'o',
+                                  marker=matplotlib_markers[dataset['marker']],
                                   s=100, alpha=0.7)
             
             ax2.set_title('Scatter Plot')
@@ -483,7 +498,7 @@ with tab2:
                                 name=dataset['name'],
                                 marker=dict(
                                     color=dataset['color'],
-                                    symbol=plotly_markers[dataset['marker']],
+                                    symbol=plotly_markers.get(dataset['marker'], 'circle'),
                                     size=10,
                                     opacity=0.7
                                 ),
@@ -615,4 +630,5 @@ st.markdown("""
 2. **Боковая панель**: Задайте названия осей и границы (опционально)
 3. **Вкладка 'Графики'**: Нажмите кнопку "Построить графики" для визуализации
 4. **Вкладка 'Статистика'**: Просмотрите статистику данных и экспортируйте результаты
+
 """)
