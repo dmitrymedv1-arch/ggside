@@ -148,7 +148,7 @@ def set_bold_axes(ax):
         ax.title.set_color('black')
     
     # Делаем жирными линии сетки серыми (можно оставить серыми или изменить)
-    ax.grid(True, linewidth=1, alpha=0.3, color='gray')
+    ax.grid(True, linewidth=1, alpha=0.3, color='white')
     
     return ax
 
@@ -1231,6 +1231,7 @@ st.markdown("""
 
 **Важно**: Файл "Скачать ВСЕ данные с настройками" содержит все параметры и может быть загружен обратно через боковую панель.
 """)
+
 
 
 
