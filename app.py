@@ -94,7 +94,7 @@ if 'datasets' not in st.session_state:
     st.session_state.datasets = [
         {
             'name': 'Sample x',
-            '0\t-5\n0.2\t-7\n0.1\t-7\n0.15\t-7.5',
+            'data': '0\t-5\n0.2\t-7\n0.1\t-7\n0.15\t-7.5',
             'color': '#E41A1C',
             'marker': 'circle',
             'active': True
@@ -632,3 +632,4 @@ st.markdown("""
 4. **Вкладка 'Статистика'**: Просмотрите статистику данных и экспортируйте результаты
 
 """)
+
