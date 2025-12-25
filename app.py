@@ -295,6 +295,19 @@ if 'x_axis_label' not in st.session_state:
 if 'y_axis_label' not in st.session_state:
     st.session_state.y_axis_label = 'Conductivity (S cm⁻¹)'
 
+# Инициализация состояния для импортированных данных
+if 'imported_file_content' not in st.session_state:
+    st.session_state.imported_file_content = None
+
+if 'imported_datasets' not in st.session_state:
+    st.session_state.imported_datasets = None
+
+if 'imported_x_label' not in st.session_state:
+    st.session_state.imported_x_label = None
+
+if 'imported_y_label' not in st.session_state:
+    st.session_state.imported_y_label = None
+
 # Доступные маркеры для matplotlib и Plotly
 matplotlib_markers = {
     'circle': 'o',
@@ -346,13 +359,31 @@ with st.sidebar:
             imported_datasets, imported_x_label, imported_y_label = import_data_with_settings(file_content)
             
             if imported_datasets:
-                st.session_state.datasets = imported_datasets
-                st.session_state.x_axis_label = imported_x_label
-                st.session_state.y_axis_label = imported_y_label
-                st.success(f"Успешно загружено {len(imported_datasets)} наборов данных!")
-                st.rerun()
+                st.session_state.imported_file_content = file_content
+                st.session_state.imported_datasets = imported_datasets
+                st.session_state.imported_x_label = imported_x_label
+                st.session_state.imported_y_label = imported_y_label
+                
+                st.success(f"Файл загружен! Обнаружено {len(imported_datasets)} наборов данных.")
+                st.info("Нажмите кнопку 'Применить загруженные данные' ниже, чтобы использовать эти настройки.")
         except Exception as e:
             st.error(f"Ошибка при загрузке файла: {str(e)}")
+    
+    # Кнопка для применения загруженных данных
+    if st.session_state.imported_datasets is not None:
+        if st.button("✅ Применить загруженные данные", type="primary"):
+            st.session_state.datasets = st.session_state.imported_datasets
+            st.session_state.x_axis_label = st.session_state.imported_x_label
+            st.session_state.y_axis_label = st.session_state.imported_y_label
+            
+            # Сбрасываем состояние импорта
+            st.session_state.imported_file_content = None
+            st.session_state.imported_datasets = None
+            st.session_state.imported_x_label = None
+            st.session_state.imported_y_label = None
+            
+            st.success("Данные успешно применены! Страница будет перезагружена.")
+            st.rerun()
     
     # Названия осей
     st.subheader("Настройка осей")
@@ -853,6 +884,7 @@ st.markdown("""
 2. **Боковая панель**: 
    - Задайте названия осей и границы (опционально)
    - Загрузите ранее экспортированные данные с настройками
+   - Нажмите кнопку "Применить загруженные данные" для использования импортированных настроек
 3. **Вкладка 'Графики'**: Нажмите кнопку "Построить графики" для визуализации
 4. **Вкладка 'Статистика'**: 
    - Просмотрите статистику данных
@@ -861,4 +893,3 @@ st.markdown("""
 
 **Важно**: Файл "Скачать ВСЕ данные с настройками" содержит все параметры и может быть загружен обратно через боковую панель.
 """)
-
