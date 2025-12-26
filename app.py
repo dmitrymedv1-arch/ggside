@@ -11,19 +11,19 @@ import io
 import json
 import base64
 
-# Настройка страницы
+# Page configuration
 st.set_page_config(
-    page_title="Визуализация данных с маргинальными распределениями",
+    page_title="Data Visualization with Marginal Distributions",
     page_icon="📊",
     layout="wide"
 )
 
-# Устанавливаем стиль seaborn
+# Set seaborn style
 sns.set_style("whitegrid")
 
-# Функция для форматирования подписей осей
+# Function to format axis labels
 def format_axis_label(text):
-    """Преобразует текст с -1 в степенной формат"""
+    """Converts text with -1 to superscript format"""
     replacements = {
         '-1': '⁻¹',
         '-2': '⁻²',
@@ -41,9 +41,9 @@ def format_axis_label(text):
     
     return text
 
-# Функция для парсинга данных
+# Function to parse data
 def parse_data(text, dataset_name):
-    """Преобразует текстовые данные в DataFrame"""
+    """Converts text data to DataFrame"""
     lines = text.strip().split('\n')
     data = []
     for line in lines:
@@ -63,9 +63,9 @@ def parse_data(text, dataset_name):
         return df
     return pd.DataFrame()
 
-# Улучшенная функция для оценки плотности с плавным переходом к нулю
+# Improved density estimation function with smooth transition to zero
 def estimate_density(data, extend_range=True, padding_factor=0.3):
-    """Оценивает плотность распределения с плавным переходом к нулю"""
+    """Estimates density distribution with smooth transition to zero"""
     if len(data) > 1:
         kde = gaussian_kde(data)
         
@@ -73,95 +73,102 @@ def estimate_density(data, extend_range=True, padding_factor=0.3):
         data_range = data_max - data_min
         
         if extend_range and data_range > 0:
-            # Увеличиваем диапазон для плавного перехода к нулю
+            # Extend range for smooth transition to zero
             extended_min = data_min - padding_factor * data_range
             extended_max = data_max + padding_factor * data_range
             
-            # Создаем точки для оценки плотности
+            # Create points for density estimation
             x_vals = np.linspace(extended_min, extended_max, 1000)
             
-            # Оцениваем плотность
+            # Estimate density
             density = kde(x_vals)
             
-            # Применяем оконную функцию для плавного перехода к нулю на краях
-            # Используем косинусное окно для плавного перехода
+            # Apply window function for smooth transition at edges
+            # Use cosine window for smooth transition
             window_size = padding_factor * data_range
             left_window = (x_vals - extended_min) / window_size
             right_window = (extended_max - x_vals) / window_size
             
-            # Создаем оконную функцию (cosine taper)
+            # Create window function (cosine taper)
             window = np.ones_like(x_vals)
             
-            # Плавное уменьшение на левом краю
+            # Smooth reduction on left edge
             mask_left = left_window < 1.0
             if np.any(mask_left):
                 window[mask_left] = 0.5 * (1 - np.cos(np.pi * left_window[mask_left]))
             
-            # Плавное уменьшение на правом краю
+            # Smooth reduction on right edge
             mask_right = right_window < 1.0
             if np.any(mask_right):
                 window[mask_right] = np.minimum(window[mask_right], 
                                                0.5 * (1 - np.cos(np.pi * right_window[mask_right])))
             
-            # Применяем оконную функцию
+            # Apply window function
             density = density * window
             
-            # Нормируем плотность для отображения (0-1)
+            # Normalize density for display (0-1)
             if density.max() > 0:
                 density = density / density.max()
             
             return x_vals, density
         else:
-            # Если не расширяем диапазон, просто оцениваем плотность
+            # If not extending range, simply estimate density
             x_vals = np.linspace(data_min, data_max, 500)
             density = kde(x_vals)
             
-            # Нормируем плотность
+            # Normalize density
             if density.max() > 0:
                 density = density / density.max()
             
             return x_vals, density
     return None, None
 
-# Функция для настройки жирных черных границ графика
-def set_bold_axes(ax):
-    """Устанавливает жирные черные границы для осей графика"""
-    # Делаем все границы (spines) жирными и черными
+# Function to configure axes with customizable borders
+def set_custom_axes(ax, border_color='black', border_width=2.5, grid_color='lightgray', grid_visible=True, background_color='white'):
+    """Sets customizable borders and grid for plot axes"""
+    # Set background color
+    ax.set_facecolor(background_color)
+    
+    # Make all borders (spines) with custom color and width
     for spine in ax.spines.values():
-        spine.set_linewidth(2.5)
-        spine.set_color('black')  # Делаем границы черными
+        spine.set_linewidth(border_width)
+        spine.set_color(border_color)
     
-    # Также делаем жирными и черными деления на осях
-    ax.tick_params(axis='both', which='major', width=2, color='black')
-    ax.tick_params(axis='both', which='minor', width=2, color='black')
+    # Also make tick marks with custom color
+    ax.tick_params(axis='both', which='major', width=2, color=border_color)
+    ax.tick_params(axis='both', which='minor', width=2, color=border_color)
     
-    # Делаем жирными метки на осях черными
+    # Set label font size
     ax.tick_params(axis='both', which='major', labelsize=10)
     
-    # Делаем цвет меток на осях черным
-    ax.xaxis.label.set_color('black')
-    ax.yaxis.label.set_color('black')
+    # Set axis label color
+    ax.xaxis.label.set_color(border_color)
+    ax.yaxis.label.set_color(border_color)
     
-    # Делаем цвет заголовка черным (если есть)
+    # Set title color (if any)
     if ax.get_title():
-        ax.title.set_color('black')
+        ax.title.set_color(border_color)
     
-    # Делаем жирными линии сетки серыми (можно оставить серыми или изменить)
-    ax.grid(True, linewidth=1, alpha=0.3, color='lightgray')
+    # Configure grid
+    if grid_visible:
+        ax.grid(True, linewidth=1, alpha=0.3, color=grid_color)
+    else:
+        ax.grid(False)
     
     return ax
 
-# Функция для экспорта всех данных с настройками
+# Function to export all data with settings
 def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual, 
                                  x_min_val, x_max_val, x_step_val, 
                                  y_min_val, y_max_val, y_step_val,
-                                 marker_size, legend_fontsize):
-    """Создает CSV файл с данными и настройками"""
+                                 marker_size, legend_fontsize,
+                                 graph_settings):
+    """Creates CSV file with data and all settings"""
     
-    # Создаем структуру для экспорта
+    # Create export structure
     export_dict = {
         'metadata': {
-            'version': '1.0',
+            'version': '1.1',
             'x_axis_label': x_label,
             'y_axis_label': y_label,
             'num_datasets': len(datasets),
@@ -179,11 +186,12 @@ def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual
             'y_max': y_max_val if y_max_val is not None else '',
             'y_step': y_step_val if y_step_val is not None else ''
         },
-        'settings': [],
+        'graph_settings': graph_settings,
+        'dataset_settings': [],
         'data': []
     }
     
-    # Сохраняем настройки каждого набора данных
+    # Save each dataset settings
     for i, dataset in enumerate(datasets):
         dataset_settings = {
             'dataset_index': i,
@@ -192,9 +200,9 @@ def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual
             'marker': dataset['marker'],
             'active': dataset['active']
         }
-        export_dict['settings'].append(dataset_settings)
+        export_dict['dataset_settings'].append(dataset_settings)
         
-        # Сохраняем данные набора
+        # Save dataset data
         if dataset['data'].strip():
             df = parse_data(dataset['data'], dataset['name'])
             if not df.empty:
@@ -207,10 +215,10 @@ def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual
                     }
                     export_dict['data'].append(data_point)
     
-    # Создаем CSV-совместимую структуру
+    # Create CSV-compatible structure
     lines = []
     
-    # 1. Метаданные
+    # 1. Metadata
     lines.append("# META DATA SECTION")
     lines.append(f"x_axis_label: {x_label}")
     lines.append(f"y_axis_label: {y_label}")
@@ -220,7 +228,7 @@ def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual
     lines.append(f"legend_fontsize: {legend_fontsize}")
     lines.append("")
     
-    # 2. Настройки осей
+    # 2. Axis settings
     lines.append("# AXIS SETTINGS SECTION")
     lines.append("setting,value")
     lines.append(f"x_manual,{export_dict['axis_settings']['x_manual']}")
@@ -233,14 +241,21 @@ def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual
     lines.append(f"y_step,{export_dict['axis_settings']['y_step']}")
     lines.append("")
     
-    # 3. Настройки наборов данных
+    # 3. Graph settings
+    lines.append("# GRAPH SETTINGS SECTION")
+    lines.append("setting,value")
+    for key, value in graph_settings.items():
+        lines.append(f"{key},{value}")
+    lines.append("")
+    
+    # 4. Dataset settings
     lines.append("# DATASET SETTINGS SECTION")
     lines.append("index,name,color,marker,active")
-    for settings in export_dict['settings']:
+    for settings in export_dict['dataset_settings']:
         lines.append(f"{settings['dataset_index']},{settings['name']},{settings['color']},{settings['marker']},{settings['active']}")
     lines.append("")
     
-    # 4. Данные
+    # 5. Data
     lines.append("# DATA POINTS SECTION")
     lines.append("dataset_index,dataset_name,x,y")
     for data_point in export_dict['data']:
@@ -248,15 +263,15 @@ def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual
     
     return "\n".join(lines)
 
-# Функция для импорта данных с настройками
+# Function to import data with settings
 def import_data_with_settings(file_content):
-    """Импортирует данные и настройки из CSV файла"""
+    """Imports data and settings from CSV file"""
     
     lines = file_content.strip().split('\n')
     
-    # Инициализируем переменные
-    x_axis_label = "Temperature (°C)"
-    y_axis_label = "Conductivity (S cm⁻¹)"
+    # Initialize variables
+    x_axis_label = "X Axis"
+    y_axis_label = "Y Axis"
     x_manual = False
     y_manual = False
     x_min = None
@@ -267,7 +282,14 @@ def import_data_with_settings(file_content):
     y_step = None
     marker_size = 50
     legend_fontsize = 10
-    datasets_settings = []
+    graph_settings = {
+        'background_color': '#FFFFFF',
+        'grid_color': '#CCCCCC',
+        'grid_visible': 'True',
+        'border_color': '#000000',
+        'border_width': '2.5'
+    }
+    dataset_settings = []
     data_points = []
     
     current_section = None
@@ -275,16 +297,19 @@ def import_data_with_settings(file_content):
     for line in lines:
         line = line.strip()
         
-        # Пропускаем пустые строки
+        # Skip empty lines
         if not line:
             continue
             
-        # Определяем секцию
+        # Determine section
         if line.startswith("# META DATA SECTION"):
             current_section = "metadata"
             continue
         elif line.startswith("# AXIS SETTINGS SECTION"):
             current_section = "axis_settings"
+            continue
+        elif line.startswith("# GRAPH SETTINGS SECTION"):
+            current_section = "graph_settings"
             continue
         elif line.startswith("# DATASET SETTINGS SECTION"):
             current_section = "settings"
@@ -295,7 +320,7 @@ def import_data_with_settings(file_content):
         elif line.startswith("#"):
             continue
         
-        # Обрабатываем метаданные
+        # Process metadata
         if current_section == "metadata":
             if line.startswith("x_axis_label:"):
                 x_axis_label = line.split(":", 1)[1].strip()
@@ -312,7 +337,7 @@ def import_data_with_settings(file_content):
                 except:
                     legend_fontsize = 10
         
-        # Обрабатываем настройки осей
+        # Process axis settings
         elif current_section == "axis_settings":
             if line.startswith("setting,value"):
                 continue
@@ -341,7 +366,17 @@ def import_data_with_settings(file_content):
                 except:
                     continue
         
-        # Обрабатываем настройки
+        # Process graph settings
+        elif current_section == "graph_settings":
+            if line.startswith("setting,value"):
+                continue
+            parts = line.split(',')
+            if len(parts) >= 2:
+                setting_name = parts[0].strip()
+                setting_value = parts[1].strip()
+                graph_settings[setting_name] = setting_value
+        
+        # Process dataset settings
         elif current_section == "settings":
             if line.startswith("index,name,color,marker,active"):
                 continue
@@ -355,11 +390,11 @@ def import_data_with_settings(file_content):
                         'marker': parts[3],
                         'active': parts[4].lower() == 'true'
                     }
-                    datasets_settings.append(dataset_setting)
+                    dataset_settings.append(dataset_setting)
                 except:
                     continue
         
-        # Обрабатываем данные
+        # Process data
         elif current_section == "data":
             if line.startswith("dataset_index,dataset_name,x,y"):
                 continue
@@ -376,10 +411,10 @@ def import_data_with_settings(file_content):
                 except:
                     continue
     
-    # Восстанавливаем наборы данных
+    # Reconstruct datasets
     datasets = []
     
-    # Группируем данные по наборам
+    # Group data by dataset
     data_by_dataset = {}
     for dp in data_points:
         idx = dp['dataset_index']
@@ -387,8 +422,8 @@ def import_data_with_settings(file_content):
             data_by_dataset[idx] = []
         data_by_dataset[idx].append(f"{dp['x']}\t{dp['y']}")
     
-    # Создаем структуру datasets
-    for setting in datasets_settings:
+    # Create datasets structure
+    for setting in dataset_settings:
         idx = setting['index']
         data_text = ""
         if idx in data_by_dataset:
@@ -414,15 +449,15 @@ def import_data_with_settings(file_content):
         'y_step': y_step
     }
     
-    return datasets, x_axis_label, y_axis_label, axis_settings, marker_size, legend_fontsize
+    return datasets, x_axis_label, y_axis_label, axis_settings, marker_size, legend_fontsize, graph_settings
 
-# Основной заголовок
-st.title("📊 Визуализация данных с маргинальными распределениями")
+# Main title
+st.title("📊 Data Visualization with Marginal Distributions")
 st.markdown("---")
 
-# Инициализация состояния сессии - БЕЗ ДАННЫХ ПО УМОЛЧАНИЮ
+# Initialize session state - NO DEFAULT DATA
 if 'datasets' not in st.session_state:
-    st.session_state.datasets = []  # Пустой список вместо данных по умолчанию
+    st.session_state.datasets = []  # Empty list instead of default data
 
 if 'x_axis_label' not in st.session_state:
     st.session_state.x_axis_label = 'X Axis'
@@ -430,7 +465,7 @@ if 'x_axis_label' not in st.session_state:
 if 'y_axis_label' not in st.session_state:
     st.session_state.y_axis_label = 'Y Axis'
 
-# Инициализация состояния для настроек осей
+# Initialize axis settings state
 if 'x_manual' not in st.session_state:
     st.session_state.x_manual = False
 
@@ -455,7 +490,17 @@ if 'y_max' not in st.session_state:
 if 'y_step' not in st.session_state:
     st.session_state.y_step = None
 
-# Инициализация состояния для импортированных данных
+# Initialize graph settings state
+if 'graph_settings' not in st.session_state:
+    st.session_state.graph_settings = {
+        'background_color': '#FFFFFF',
+        'grid_color': '#CCCCCC',
+        'grid_visible': True,
+        'border_color': '#000000',
+        'border_width': 2.5
+    }
+
+# Initialize imported data state
 if 'imported_file_content' not in st.session_state:
     st.session_state.imported_file_content = None
 
@@ -477,18 +522,21 @@ if 'imported_marker_size' not in st.session_state:
 if 'imported_legend_fontsize' not in st.session_state:
     st.session_state.imported_legend_fontsize = 10
 
-# Флаг для применения импортированных данных
+if 'imported_graph_settings' not in st.session_state:
+    st.session_state.imported_graph_settings = None
+
+# Flag for applying imported data
 if 'apply_imported_data' not in st.session_state:
     st.session_state.apply_imported_data = False
 
-# Инициализация состояния для размера маркеров и легенды
+# Initialize marker size and legend state
 if 'marker_size' not in st.session_state:
     st.session_state.marker_size = 50
 
 if 'legend_fontsize' not in st.session_state:
     st.session_state.legend_fontsize = 10
 
-# Доступные маркеры для matplotlib и Plotly
+# Available markers for matplotlib and Plotly
 matplotlib_markers = {
     'circle': 'o',
     'square': 's',
@@ -517,12 +565,12 @@ plotly_markers = {
     'point': 'circle-open'
 }
 
-# Цвета по умолчанию
+# Default colors
 default_colors = ['#E41A1C', '#377EB8', '#4DAF4A', '#984EA3', '#FF7F00', '#FFFF33', '#A65628', '#F781BF', '#999999']
 
-# Функция для автоматического определения границ осей
+# Function for automatic axis limits detection
 def auto_detect_axis_limits(datasets):
-    """Автоматически определяет минимальные и максимальные значения для осей X и Y"""
+    """Automatically detects minimum and maximum values for X and Y axes"""
     x_min = None
     x_max = None
     y_min = None
@@ -541,7 +589,7 @@ def auto_detect_axis_limits(datasets):
                 if y_max is None or df['y'].max() > y_max:
                     y_max = df['y'].max()
     
-    # Добавляем небольшой запас по краям (10%)
+    # Add small margin at edges (10%)
     if x_min is not None and x_max is not None and x_min != x_max:
         x_range = x_max - x_min
         x_min_auto = x_min - 0.1 * x_range
@@ -564,7 +612,7 @@ def auto_detect_axis_limits(datasets):
         y_min_auto = 0
         y_max_auto = 1
     
-    # Вычисляем шаг (около 10 делений)
+    # Calculate step (about 10 divisions)
     x_step_auto = max((x_max_auto - x_min_auto) / 10, 0.1)
     y_step_auto = max((y_max_auto - y_min_auto) / 10, 0.1)
     
@@ -577,18 +625,46 @@ def auto_detect_axis_limits(datasets):
         'y_step': round(y_step_auto, 3)
     }
 
-# Боковая панель для настроек
-# Боковая панель для настроек
+# Function to reset all settings
+def reset_all_settings():
+    """Resets all settings to default values"""
+    st.session_state.datasets = []
+    st.session_state.x_axis_label = 'X Axis'
+    st.session_state.y_axis_label = 'Y Axis'
+    st.session_state.x_manual = False
+    st.session_state.y_manual = False
+    st.session_state.x_min = None
+    st.session_state.x_max = None
+    st.session_state.x_step = None
+    st.session_state.y_min = None
+    st.session_state.y_max = None
+    st.session_state.y_step = None
+    st.session_state.marker_size = 50
+    st.session_state.legend_fontsize = 10
+    st.session_state.graph_settings = {
+        'background_color': '#FFFFFF',
+        'grid_color': '#CCCCCC',
+        'grid_visible': True,
+        'border_color': '#000000',
+        'border_width': 2.5
+    }
+
+# Sidebar for settings
 with st.sidebar:
-    st.header("⚙️ Настройки")
+    st.header("⚙️ Settings")
     
-    # 1. Управление наборами данных
-    st.subheader("Управление наборами данных")
+    # Clear All button at the top
+    if st.button("🗑️ Clear All Settings", type="secondary"):
+        reset_all_settings()
+        st.rerun()
     
-    if st.button("➕ Добавить новый набор данных", key="add_dataset_button"):
+    # 1. Dataset Management
+    st.subheader("Dataset Management")
+    
+    if st.button("➕ Add New Dataset", key="add_dataset_button"):
         idx = len(st.session_state.datasets)
         new_dataset = {
-            'name': f'Набор {idx + 1}',
+            'name': f'Dataset {idx + 1}',
             'data': '',
             'color': default_colors[idx % len(default_colors)],
             'marker': 'circle',
@@ -597,27 +673,27 @@ with st.sidebar:
         st.session_state.datasets.append(new_dataset)
         st.rerun()
     
-    if st.button("➖ Удалить последний набор", key="remove_dataset_button") and len(st.session_state.datasets) > 0:
+    if st.button("➖ Remove Last Dataset", key="remove_dataset_button") and len(st.session_state.datasets) > 0:
         st.session_state.datasets.pop()
         st.rerun()
     
-    # 2. Настройка осей
-    st.subheader("Настройка осей")
+    # 2. Axis Settings
+    st.subheader("Axis Settings")
     st.session_state.x_axis_label = st.text_input(
-        "Название оси X",
+        "X Axis Label",
         value=st.session_state.x_axis_label,
         key="x_axis_label_input"
     )
     st.session_state.y_axis_label = st.text_input(
-        "Название оси Y",
+        "Y Axis Label",
         value=st.session_state.y_axis_label,
         key="y_axis_label_input"
     )
     
-    # Автоматическое определение границ осей
+    # Automatic axis limits detection
     auto_limits = auto_detect_axis_limits(st.session_state.datasets)
     
-    # Обновляем значения в session_state, если они не были установлены вручную
+    # Update session_state values if not manually set
     if st.session_state.x_min is None:
         st.session_state.x_min = auto_limits['x_min']
     if st.session_state.x_max is None:
@@ -631,17 +707,17 @@ with st.sidebar:
     if st.session_state.y_step is None:
         st.session_state.y_step = auto_limits['y_step']
     
-    # 3. Управление границами осей
-    st.subheader("Управление границами осей")
+    # 3. Axis Boundaries Management
+    st.subheader("Axis Boundaries Management")
     
     col1, col2 = st.columns(2)
     with col1:
-        x_manual = st.checkbox("Настроить ось X", 
+        x_manual = st.checkbox("Configure X Axis", 
                               value=st.session_state.x_manual,
                               key="x_manual_checkbox")
         st.session_state.x_manual = x_manual
     with col2:
-        y_manual = st.checkbox("Настроить ось Y", 
+        y_manual = st.checkbox("Configure Y Axis", 
                               value=st.session_state.y_manual,
                               key="y_manual_checkbox")
         st.session_state.y_manual = y_manual
@@ -649,27 +725,27 @@ with st.sidebar:
     if x_manual:
         col1, col2, col3 = st.columns(3)
         with col1:
-            # Показываем автоматически определенное значение в качестве значения по умолчанию
-            x_min = st.number_input("X мин", 
+            # Show automatically detected value as default
+            x_min = st.number_input("X min", 
                                    value=float(st.session_state.x_min) if st.session_state.x_min is not None else float(auto_limits['x_min']), 
                                    step=0.1,
                                    key="x_min_input")
             st.session_state.x_min = x_min
         with col2:
-            x_max = st.number_input("X макс", 
+            x_max = st.number_input("X max", 
                                    value=float(st.session_state.x_max) if st.session_state.x_max is not None else float(auto_limits['x_max']), 
                                    step=0.1,
                                    key="x_max_input")
             st.session_state.x_max = x_max
         with col3:
-            x_step = st.number_input("X шаг", 
+            x_step = st.number_input("X step", 
                                     value=float(st.session_state.x_step) if st.session_state.x_step is not None else float(auto_limits['x_step']), 
                                     step=0.1, 
                                     min_value=0.01,
                                     key="x_step_input")
             st.session_state.x_step = x_step
     else:
-        # Сбрасываем значения при отключении ручной настройки
+        # Reset values when manual configuration is disabled
         st.session_state.x_min = None
         st.session_state.x_max = None
         st.session_state.x_step = None
@@ -677,32 +753,32 @@ with st.sidebar:
     if y_manual:
         col1, col2, col3 = st.columns(3)
         with col1:
-            y_min = st.number_input("Y мин", 
+            y_min = st.number_input("Y min", 
                                    value=float(st.session_state.y_min) if st.session_state.y_min is not None else float(auto_limits['y_min']), 
                                    step=0.1,
                                    key="y_min_input")
             st.session_state.y_min = y_min
         with col2:
-            y_max = st.number_input("Y макс", 
+            y_max = st.number_input("Y max", 
                                    value=float(st.session_state.y_max) if st.session_state.y_max is not None else float(auto_limits['y_max']), 
                                    step=0.1,
                                    key="y_max_input")
             st.session_state.y_max = y_max
         with col3:
-            y_step = st.number_input("Y шаг", 
+            y_step = st.number_input("Y step", 
                                     value=float(st.session_state.y_step) if st.session_state.y_step is not None else float(auto_limits['y_step']), 
                                     step=0.1, 
                                     min_value=0.01,
                                     key="y_step_input")
             st.session_state.y_step = y_step
     else:
-        # Сбрасываем значения при отключении ручной настройки
+        # Reset values when manual configuration is disabled
         st.session_state.y_min = None
         st.session_state.y_max = None
         st.session_state.y_step = None
     
-    # Кнопка для сброса к автоматическим значениям
-    if st.button("🔄 Сбросить к автоматическим значениям"):
+    # Button to reset to automatic values
+    if st.button("🔄 Reset to Automatic Values"):
         auto_limits = auto_detect_axis_limits(st.session_state.datasets)
         st.session_state.x_min = auto_limits['x_min']
         st.session_state.x_max = auto_limits['x_max']
@@ -712,46 +788,91 @@ with st.sidebar:
         st.session_state.y_step = auto_limits['y_step']
         st.rerun()
     
-    # 4. Настройки отображения
-    st.subheader("Настройки отображения")
+    # 4. Display Settings
+    st.subheader("Display Settings")
     
-    # Виджет для изменения размера всех маркеров
+    # Widget to change all markers size
     marker_size = st.slider(
-        "Размер всех маркеров",
+        "All Markers Size",
         min_value=10,
         max_value=200,
         value=st.session_state.marker_size,
         step=5,
         key="marker_size_slider",
-        help="Изменяет размер всех маркеров на графиках"
+        help="Changes size of all markers on plots"
     )
     st.session_state.marker_size = marker_size
     
-    # Виджет для изменения размера шрифта легенды
+    # Widget to change legend font size
     legend_fontsize = st.slider(
-        "Размер шрифта легенды",
+        "Legend Font Size",
         min_value=6,
         max_value=24,
         value=st.session_state.legend_fontsize,
         step=1,
         key="legend_fontsize_slider",
-        help="Изменяет размер шрифта в легенде графиков"
+        help="Changes font size in plot legends"
     )
     st.session_state.legend_fontsize = legend_fontsize
     
-    # 5. Импорт/Экспорт
-    st.subheader("Импорт/Экспорт")
+    # 5. Graph Appearance Settings
+    st.subheader("Graph Appearance")
+    
+    # Background color
+    background_color = st.color_picker(
+        "Graph Background Color",
+        value=st.session_state.graph_settings['background_color'],
+        key="background_color_picker"
+    )
+    st.session_state.graph_settings['background_color'] = background_color
+    
+    # Grid settings
+    grid_visible = st.checkbox(
+        "Show Grid",
+        value=st.session_state.graph_settings['grid_visible'],
+        key="grid_visible_checkbox"
+    )
+    st.session_state.graph_settings['grid_visible'] = grid_visible
+    
+    if grid_visible:
+        grid_color = st.color_picker(
+            "Grid Color",
+            value=st.session_state.graph_settings['grid_color'],
+            key="grid_color_picker"
+        )
+        st.session_state.graph_settings['grid_color'] = grid_color
+    
+    # Border settings
+    border_color = st.color_picker(
+        "Border Color",
+        value=st.session_state.graph_settings['border_color'],
+        key="border_color_picker"
+    )
+    st.session_state.graph_settings['border_color'] = border_color
+    
+    border_width = st.slider(
+        "Border Width",
+        min_value=0.5,
+        max_value=10.0,
+        value=float(st.session_state.graph_settings['border_width']),
+        step=0.5,
+        key="border_width_slider"
+    )
+    st.session_state.graph_settings['border_width'] = border_width
+    
+    # 6. Import/Export
+    st.subheader("Import/Export")
     
     uploaded_file = st.file_uploader(
-        "Загрузить данные с настройками",
+        "Load Data with Settings",
         type=['csv', 'txt'],
-        help="Загрузите файл, ранее экспортированный из этого приложения"
+        help="Load a file previously exported from this application"
     )
     
     if uploaded_file is not None:
         try:
             file_content = uploaded_file.getvalue().decode('utf-8')
-            imported_datasets, imported_x_label, imported_y_label, imported_axis_settings, imported_marker_size, imported_legend_fontsize = import_data_with_settings(file_content)
+            imported_datasets, imported_x_label, imported_y_label, imported_axis_settings, imported_marker_size, imported_legend_fontsize, imported_graph_settings = import_data_with_settings(file_content)
             
             if imported_datasets:
                 st.session_state.imported_file_content = file_content
@@ -761,28 +882,29 @@ with st.sidebar:
                 st.session_state.imported_axis_settings = imported_axis_settings
                 st.session_state.imported_marker_size = imported_marker_size
                 st.session_state.imported_legend_fontsize = imported_legend_fontsize
+                st.session_state.imported_graph_settings = imported_graph_settings
                 
-                st.success(f"Файл загружен! Обнаружено {len(imported_datasets)} наборов данных.")
-                st.info("Нажмите кнопку 'Применить загруженные данные' ниже, чтобы использовать эти настройки.")
+                st.success(f"File loaded! Found {len(imported_datasets)} datasets.")
+                st.info("Click 'Apply Loaded Data' button below to use these settings.")
         except Exception as e:
-            st.error(f"Ошибка при загрузке файла: {str(e)}")
+            st.error(f"Error loading file: {str(e)}")
     
-    # Кнопка для применения загруженных данных
+    # Button to apply loaded data
     if st.session_state.imported_datasets is not None:
-        if st.button("✅ Применить загруженные данные", type="primary"):
-            # Устанавливаем флаг для применения данных
+        if st.button("✅ Apply Loaded Data", type="primary"):
+            # Set flag to apply data
             st.session_state.apply_imported_data = True
             st.rerun()
-            
-# Применяем импортированные данные (если установлен флаг)
+
+# Apply imported data (if flag is set)
 if st.session_state.apply_imported_data and st.session_state.imported_datasets is not None:
-    # ПОЛНОСТЬЮ заменяем datasets на импортированные
+    # COMPLETELY replace datasets with imported ones
     st.session_state.datasets = st.session_state.imported_datasets.copy()
     
     st.session_state.x_axis_label = st.session_state.imported_x_label
     st.session_state.y_axis_label = st.session_state.imported_y_label
     
-    # Применяем настройки осей
+    # Apply axis settings
     if st.session_state.imported_axis_settings:
         st.session_state.x_manual = st.session_state.imported_axis_settings['x_manual']
         st.session_state.y_manual = st.session_state.imported_axis_settings['y_manual']
@@ -793,11 +915,18 @@ if st.session_state.apply_imported_data and st.session_state.imported_datasets i
         st.session_state.y_max = st.session_state.imported_axis_settings['y_max']
         st.session_state.y_step = st.session_state.imported_axis_settings['y_step']
     
-    # Применяем настройки маркеров и легенды
+    # Apply graph settings
+    if st.session_state.imported_graph_settings:
+        st.session_state.graph_settings = st.session_state.imported_graph_settings.copy()
+        # Ensure boolean conversion
+        st.session_state.graph_settings['grid_visible'] = st.session_state.graph_settings['grid_visible'].lower() == 'true' if isinstance(st.session_state.graph_settings['grid_visible'], str) else st.session_state.graph_settings['grid_visible']
+        st.session_state.graph_settings['border_width'] = float(st.session_state.graph_settings['border_width'])
+    
+    # Apply marker and legend settings
     st.session_state.marker_size = st.session_state.imported_marker_size
     st.session_state.legend_fontsize = st.session_state.imported_legend_fontsize
     
-    # Сбрасываем состояние импорта
+    # Reset import state
     st.session_state.imported_file_content = None
     st.session_state.imported_datasets = None
     st.session_state.imported_x_label = None
@@ -805,43 +934,44 @@ if st.session_state.apply_imported_data and st.session_state.imported_datasets i
     st.session_state.imported_axis_settings = None
     st.session_state.imported_marker_size = 50
     st.session_state.imported_legend_fontsize = 10
+    st.session_state.imported_graph_settings = None
     st.session_state.apply_imported_data = False
     
-    st.success("Данные успешно применены!")
+    st.success("Data successfully applied!")
     st.rerun()
 
-# Основная область
-tab1, tab2, tab3 = st.tabs(["📁 Данные", "📊 Графики", "📈 Статистика"])
+# Main area
+tab1, tab2, tab3 = st.tabs(["📁 Data", "📊 Plots", "📈 Statistics"])
 
 with tab1:
-    st.header("Настройка наборов данных")
-    st.markdown("Введите данные в формате: **X_value<tab>Y_value**")
-    st.markdown("Пример: `0.1\t-5.5`")
+    st.header("Dataset Configuration")
+    st.markdown("Enter data in format: **X_value<tab>Y_value**")
+    st.markdown("Example: `0.1\t-5.5`")
     
-    # Показываем текущие автоматические границы
+    # Show current automatic boundaries
     auto_limits_tab1 = auto_detect_axis_limits(st.session_state.datasets)
-    st.info(f"Автоматически определенные границы: X=[{auto_limits_tab1['x_min']:.3f}, {auto_limits_tab1['x_max']:.3f}], Y=[{auto_limits_tab1['y_min']:.3f}, {auto_limits_tab1['y_max']:.3f}]")
+    st.info(f"Auto-detected boundaries: X=[{auto_limits_tab1['x_min']:.3f}, {auto_limits_tab1['x_max']:.3f}], Y=[{auto_limits_tab1['y_min']:.3f}, {auto_limits_tab1['y_max']:.3f}]")
     
     if len(st.session_state.datasets) == 0:
-        st.info("Нет наборов данных. Нажмите кнопку '➕ Добавить новый набор данных' в боковой панели.")
+        st.info("No datasets. Click '➕ Add New Dataset' button in the sidebar.")
     else:
-        # Отображение и редактирование наборов данных
+        # Display and edit datasets
         all_data_frames = []
         
         for i, dataset in enumerate(st.session_state.datasets):
-            with st.expander(f"Набор данных {i+1}: {dataset['name']}", expanded=True):
+            with st.expander(f"Dataset {i+1}: {dataset['name']}", expanded=True):
                 col1, col2, col3 = st.columns([2, 1, 1])
                 
                 with col1:
                     new_name = st.text_input(
-                        f"Название набора {i+1}",
+                        f"Dataset Name {i+1}",
                         value=dataset['name'],
                         key=f"name_{i}"
                     )
                     st.session_state.datasets[i]['name'] = new_name
                     
                     data_text = st.text_area(
-                        "Данные (X\\tY)",
+                        "Data (X\\tY)",
                         value=dataset['data'],
                         height=150,
                         key=f"data_{i}"
@@ -850,7 +980,7 @@ with tab1:
                 
                 with col2:
                     color = st.color_picker(
-                        "Цвет",
+                        "Color",
                         value=dataset['color'],
                         key=f"color_{i}"
                     )
@@ -858,7 +988,7 @@ with tab1:
                 
                 with col3:
                     marker = st.selectbox(
-                        "Маркер",
+                        "Marker",
                         options=list(matplotlib_markers.keys()),
                         index=list(matplotlib_markers.keys()).index(dataset['marker']) if dataset['marker'] in matplotlib_markers else 0,
                         key=f"marker_{i}"
@@ -866,37 +996,40 @@ with tab1:
                     st.session_state.datasets[i]['marker'] = marker
                     
                     active = st.checkbox(
-                        "Активен",
+                        "Active",
                         value=dataset['active'],
                         key=f"active_{i}"
                     )
                     st.session_state.datasets[i]['active'] = active
                 
-                # Парсим данные для предварительного просмотра
+                # Parse data for preview
                 if data_text.strip():
                     df = parse_data(data_text, new_name)
                     if not df.empty:
                         all_data_frames.append(df)
                         
-                        # Предпросмотр данных
-                        st.markdown(f"**Предпросмотр ({len(df)} точек):**")
+                        # Data preview
+                        st.markdown(f"**Preview ({len(df)} points):**")
                         st.dataframe(df[['x', 'y']].head(), use_container_width=True)
         
-        # Собираем все данные
+        # Collect all data
         if all_data_frames:
             all_data = pd.concat(all_data_frames, ignore_index=True)
 
 with tab2:
-    st.header("Визуализация данных")
+    st.header("Data Visualization")
     
-    # Показываем текущие настройки
-    col1, col2 = st.columns(2)
+    # Show current settings
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.info(f"📏 Размер маркеров: **{st.session_state.marker_size}**")
+        st.info(f"📏 Marker Size: **{st.session_state.marker_size}**")
     with col2:
-        st.info(f"🔤 Размер шрифта легенды: **{st.session_state.legend_fontsize}**")
+        st.info(f"🔤 Legend Font Size: **{st.session_state.legend_fontsize}**")
+    with col3:
+        grid_status = "ON" if st.session_state.graph_settings['grid_visible'] else "OFF"
+        st.info(f"📐 Grid: **{grid_status}**")
     
-    # Проверяем, есть ли данные для построения графиков
+    # Check if there is data for plotting
     has_data = False
     for dataset in st.session_state.datasets:
         if dataset['active'] and dataset['data'].strip():
@@ -906,11 +1039,11 @@ with tab2:
                 break
     
     if not has_data:
-        st.warning("Нет данных для отображения! Пожалуйста, добавьте наборы данных и введите данные во вкладке 'Данные'.")
+        st.warning("No data to display! Please add datasets and enter data in the 'Data' tab.")
     else:
-        # Кнопка для построения графиков
-        if st.button("🚀 Построить графики", type="primary"):
-            # Собираем все данные для проверки
+        # Button to create plots
+        if st.button("🚀 Create Plots", type="primary"):
+            # Collect all data for checking
             all_data_frames_local = []
             for dataset in st.session_state.datasets:
                 if dataset['active']:
@@ -921,7 +1054,7 @@ with tab2:
             if all_data_frames_local:
                 all_data = pd.concat(all_data_frames_local, ignore_index=True)
                 
-                # Автоматически определяем границы, если не заданы вручную
+                # Automatically determine boundaries if not manually set
                 auto_limits = auto_detect_axis_limits(st.session_state.datasets)
                 
                 if not st.session_state.x_manual:
@@ -942,10 +1075,10 @@ with tab2:
                     auto_y_max = st.session_state.y_max
                     auto_y_step = st.session_state.y_step
                 
-                # Основной график с маргинальными распределениями
-                st.subheader("Scatter Plot с маргинальными распределениями")
+                # Main plot with marginal distributions
+                st.subheader("Scatter Plot with Marginal Distributions")
                 
-                # Создаем фигуру Matplotlib
+                # Create Matplotlib figure
                 fig, (ax_top, ax_main) = plt.subplots(
                     2, 2, 
                     figsize=(12, 10),
@@ -953,17 +1086,35 @@ with tab2:
                     constrained_layout=True
                 )
                 
-                # Убираем лишние оси
+                # Remove extra axes
                 ax_right = ax_main[1]
                 ax_main = ax_main[0]
                 ax_top[1].axis('off')
                 ax_top = ax_top[0]
 
-                set_bold_axes(ax_top)
-                set_bold_axes(ax_main)
-                set_bold_axes(ax_right)
+                # Apply custom axes settings
+                set_custom_axes(ax_top, 
+                              border_color=st.session_state.graph_settings['border_color'], 
+                              border_width=st.session_state.graph_settings['border_width'],
+                              grid_color=st.session_state.graph_settings['grid_color'],
+                              grid_visible=st.session_state.graph_settings['grid_visible'],
+                              background_color=st.session_state.graph_settings['background_color'])
+                
+                set_custom_axes(ax_main, 
+                              border_color=st.session_state.graph_settings['border_color'], 
+                              border_width=st.session_state.graph_settings['border_width'],
+                              grid_color=st.session_state.graph_settings['grid_color'],
+                              grid_visible=st.session_state.graph_settings['grid_visible'],
+                              background_color=st.session_state.graph_settings['background_color'])
+                
+                set_custom_axes(ax_right, 
+                              border_color=st.session_state.graph_settings['border_color'], 
+                              border_width=st.session_state.graph_settings['border_width'],
+                              grid_color=st.session_state.graph_settings['grid_color'],
+                              grid_visible=st.session_state.graph_settings['grid_visible'],
+                              background_color=st.session_state.graph_settings['background_color'])
 
-                # Рисуем точки на основном графике с настраиваемым размером маркеров
+                # Draw points on main plot with customizable marker size
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -977,14 +1128,15 @@ with tab2:
                                 alpha=0.7
                             )
                 
-                # Настройки основного графика
+                # Main plot settings
                 ax_main.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=12)
                 ax_main.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=12)
                 if len(st.session_state.datasets) > 0:
-                    ax_main.legend(title='Наборы данных', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
-                ax_main.grid(True, alpha=0.3)
+                    ax_main.legend(title='Datasets', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
+                if st.session_state.graph_settings['grid_visible']:
+                    ax_main.grid(True, alpha=0.3)
                 
-                # Применяем границы осей
+                # Apply axis boundaries
                 if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
                     ax_main.set_xlim(st.session_state.x_min, st.session_state.x_max)
                     ax_top.set_xlim(st.session_state.x_min, st.session_state.x_max)
@@ -999,52 +1151,58 @@ with tab2:
                     ax_main.set_ylim(auto_y_min, auto_y_max)
                     ax_right.set_ylim(auto_y_min, auto_y_max)
                 
-                # Рисуем маргинальные распределения с улучшенной функцией плотности
+                # Draw marginal distributions with improved density function
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
                         if not df.empty and len(df) > 1:
                             color = dataset['color']
                             
-                            # Распределение по X (верхний график)
+                            # Distribution by X (top plot)
                             x_vals, density = estimate_density(df['x'].values)
                             if x_vals is not None and density is not None:
                                 ax_top.fill_between(x_vals, 0, density, color=color, alpha=0.3)
                                 ax_top.plot(x_vals, density, color=color, linewidth=1.5)
                             
-                            # Распределение по Y (правый график)
+                            # Distribution by Y (right plot)
                             y_vals, density = estimate_density(df['y'].values)
                             if y_vals is not None and density is not None:
                                 ax_right.fill_betweenx(y_vals, 0, density, color=color, alpha=0.3)
                                 ax_right.plot(density, y_vals, color=color, linewidth=1.5)
                 
-                # Настройки маргинальных графиков
+                # Marginal plot settings
                 ax_top.set_ylabel('Density', fontsize=10)
                 ax_top.set_ylim(0, 1.1)
                 ax_top.tick_params(axis='x', labelbottom=False)
-                ax_top.grid(True, alpha=0.3)
+                if st.session_state.graph_settings['grid_visible']:
+                    ax_top.grid(True, alpha=0.3)
                 
                 ax_right.set_xlabel('Density', fontsize=10)
                 ax_right.set_xlim(0, 1.1)
                 ax_right.tick_params(axis='y', labelleft=False)
-                ax_right.grid(True, alpha=0.3)
+                if st.session_state.graph_settings['grid_visible']:
+                    ax_right.grid(True, alpha=0.3)
                 
-                # Заголовок
+                # Title
                 fig.suptitle('Scatter Plot with Marginal Densities', fontsize=14, fontweight='bold')
                 
                 st.pyplot(fig)
                 
-                # Альтернативные графики
-                st.subheader("Альтернативное представление")
+                # Alternative plots
+                st.subheader("Alternative Representation")
                 
                 fig2, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 12))
 
-                set_bold_axes(ax1)
-                set_bold_axes(ax2)
-                set_bold_axes(ax3)
-                set_bold_axes(ax4)
+                # Apply custom settings to all axes
+                for ax in [ax1, ax2, ax3, ax4]:
+                    set_custom_axes(ax, 
+                                  border_color=st.session_state.graph_settings['border_color'], 
+                                  border_width=st.session_state.graph_settings['border_width'],
+                                  grid_color=st.session_state.graph_settings['grid_color'],
+                                  grid_visible=st.session_state.graph_settings['grid_visible'],
+                                  background_color=st.session_state.graph_settings['background_color'])
                 
-                # 1. Основной scatter plot
+                # 1. Main scatter plot
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1056,14 +1214,15 @@ with tab2:
                                       s=st.session_state.marker_size, 
                                       alpha=0.7)
                 
-                ax1.set_title('Scatter Plot: Все образцы')
+                ax1.set_title('Scatter Plot: All Samples')
                 ax1.set_xlabel(format_axis_label(st.session_state.x_axis_label))
                 ax1.set_ylabel(format_axis_label(st.session_state.y_axis_label))
                 if len(st.session_state.datasets) > 0:
-                    ax1.legend(title='Группа', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
-                ax1.grid(True, alpha=0.3)
+                    ax1.legend(title='Group', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
+                if st.session_state.graph_settings['grid_visible']:
+                    ax1.grid(True, alpha=0.3)
                 
-                # Применяем границы осей
+                # Apply axis boundaries
                 if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
                     ax1.set_xlim(st.session_state.x_min, st.session_state.x_max)
                     ax3.set_xlim(st.session_state.x_min, st.session_state.x_max)
@@ -1078,7 +1237,7 @@ with tab2:
                     ax1.set_ylim(auto_y_min, auto_y_max)
                     ax4.set_ylim(auto_y_min, auto_y_max)
                 
-                # 2. Второй scatter plot
+                # 2. Second scatter plot
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1094,10 +1253,11 @@ with tab2:
                 ax2.set_xlabel(format_axis_label(st.session_state.x_axis_label))
                 ax2.set_ylabel(format_axis_label(st.session_state.y_axis_label))
                 if len(st.session_state.datasets) > 0:
-                    ax2.legend(title='Группа', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
-                ax2.grid(True, alpha=0.3)
+                    ax2.legend(title='Group', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
+                if st.session_state.graph_settings['grid_visible']:
+                    ax2.grid(True, alpha=0.3)
                 
-                # 3. KDE для X
+                # 3. KDE for X
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1108,14 +1268,15 @@ with tab2:
                                 ax3.fill_between(x_vals, 0, density, color=color, alpha=0.3)
                                 ax3.plot(x_vals, density, color=color, linewidth=2, label=dataset['name'])
                 
-                ax3.set_title('Распределение по X')
+                ax3.set_title('Distribution by X')
                 ax3.set_xlabel(format_axis_label(st.session_state.x_axis_label))
-                ax3.set_ylabel('Нормированная плотность')
+                ax3.set_ylabel('Normalized Density')
                 if len(st.session_state.datasets) > 0:
-                    ax3.legend(title='Группа', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
-                ax3.grid(True, alpha=0.3)
+                    ax3.legend(title='Group', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
+                if st.session_state.graph_settings['grid_visible']:
+                    ax3.grid(True, alpha=0.3)
                 
-                # 4. KDE для Y
+                # 4. KDE for Y
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1126,29 +1287,30 @@ with tab2:
                                 ax4.fill_between(y_vals, 0, density, color=color, alpha=0.3)
                                 ax4.plot(y_vals, density, color=color, linewidth=2, label=dataset['name'])
                 
-                ax4.set_title('Распределение по Y')
+                ax4.set_title('Distribution by Y')
                 ax4.set_xlabel(format_axis_label(st.session_state.y_axis_label))
-                ax4.set_ylabel('Нормированная плотность')
+                ax4.set_ylabel('Normalized Density')
                 if len(st.session_state.datasets) > 0:
-                    ax4.legend(title='Группа', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
-                ax4.grid(True, alpha=0.3)
+                    ax4.legend(title='Group', fontsize=st.session_state.legend_fontsize, title_fontsize=st.session_state.legend_fontsize)
+                if st.session_state.graph_settings['grid_visible']:
+                    ax4.grid(True, alpha=0.3)
                 
-                plt.suptitle('Анализ данных с маргинальными распределениями', fontsize=16, fontweight='bold')
+                plt.suptitle('Data Analysis with Marginal Distributions', fontsize=16, fontweight='bold')
                 plt.tight_layout()
                 st.pyplot(fig2)
                 
-                # Интерактивный график Plotly
-                st.subheader("Интерактивный график (Plotly)")
+                # Interactive Plotly plot
+                st.subheader("Interactive Plot (Plotly)")
                 
                 fig_plotly = make_subplots(
                     rows=2, cols=2,
-                    subplot_titles=('Scatter Plot: Все образцы', 'Scatter Plot',
-                                   'Распределение по X', 'Распределение по Y'),
+                    subplot_titles=('Scatter Plot: All Samples', 'Scatter Plot',
+                                   'Distribution by X', 'Distribution by Y'),
                     vertical_spacing=0.15,
                     horizontal_spacing=0.15
                 )
                 
-                # Добавляем scatter plots с настраиваемым размером маркеров
+                # Add scatter plots with customizable marker size
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1163,7 +1325,7 @@ with tab2:
                                     marker=dict(
                                         color=dataset['color'],
                                         symbol=plotly_markers.get(dataset['marker'], 'circle'),
-                                        size=st.session_state.marker_size/2,  # Уменьшаем размер для Plotly
+                                        size=st.session_state.marker_size/2,  # Reduce size for Plotly
                                         opacity=0.7
                                     ),
                                     showlegend=True
@@ -1181,7 +1343,7 @@ with tab2:
                                     marker=dict(
                                         color=dataset['color'],
                                         symbol=plotly_markers[dataset['marker']],
-                                        size=st.session_state.marker_size/2,  # Уменьшаем размер для Plotly
+                                        size=st.session_state.marker_size/2,  # Reduce size for Plotly
                                         opacity=0.7
                                     ),
                                     showlegend=False
@@ -1189,13 +1351,13 @@ with tab2:
                                 row=1, col=2
                             )
                 
-                # Обновляем layout
+                # Update layout
                 fig_plotly.update_xaxes(title_text=format_axis_label(st.session_state.x_axis_label), row=1, col=1)
                 fig_plotly.update_yaxes(title_text=format_axis_label(st.session_state.y_axis_label), row=1, col=1)
                 fig_plotly.update_xaxes(title_text=format_axis_label(st.session_state.x_axis_label), row=1, col=2)
                 fig_plotly.update_yaxes(title_text=format_axis_label(st.session_state.y_axis_label), row=1, col=2)
                 
-                # Применяем границы осей
+                # Apply axis boundaries
                 if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
                     fig_plotly.update_xaxes(range=[st.session_state.x_min, st.session_state.x_max], row=1, col=1)
                     fig_plotly.update_xaxes(range=[st.session_state.x_min, st.session_state.x_max], row=1, col=2)
@@ -1212,9 +1374,10 @@ with tab2:
                 
                 fig_plotly.update_layout(
                     height=800,
-                    title_text="Интерактивная визуализация данных",
+                    title_text="Interactive Data Visualization",
                     showlegend=True,
                     hovermode='closest',
+                    plot_bgcolor=st.session_state.graph_settings['background_color'],
                     legend=dict(
                         font=dict(size=st.session_state.legend_fontsize)
                     )
@@ -1223,9 +1386,9 @@ with tab2:
                 st.plotly_chart(fig_plotly, use_container_width=True)
 
 with tab3:
-    st.header("Статистика данных")
+    st.header("Data Statistics")
     
-    # Собираем все данные для статистики
+    # Collect all data for statistics
     stats_data_frames = []
     for dataset in st.session_state.datasets:
         if dataset['active']:
@@ -1236,8 +1399,8 @@ with tab3:
     if stats_data_frames:
         all_data = pd.concat(stats_data_frames, ignore_index=True)
         
-        # Общая статистика
-        st.subheader("Общая статистика")
+        # General statistics
+        st.subheader("General Statistics")
         
         stats_data = []
         for i, dataset in enumerate(st.session_state.datasets):
@@ -1245,15 +1408,15 @@ with tab3:
                 df = parse_data(dataset['data'], dataset['name'])
                 if not df.empty:
                     stats = {
-                        'Набор данных': dataset['name'],
-                        'Количество точек': len(df),
-                        'X мин': f"{df['x'].min():.3f}",
-                        'X макс': f"{df['x'].max():.3f}",
-                        'X среднее': f"{df['x'].mean():.3f}",
+                        'Dataset': dataset['name'],
+                        'Number of Points': len(df),
+                        'X min': f"{df['x'].min():.3f}",
+                        'X max': f"{df['x'].max():.3f}",
+                        'X mean': f"{df['x'].mean():.3f}",
                         'X std': f"{df['x'].std():.3f}",
-                        'Y мин': f"{df['y'].min():.3f}",
-                        'Y макс': f"{df['y'].max():.3f}",
-                        'Y среднее': f"{df['y'].mean():.3f}",
+                        'Y min': f"{df['y'].min():.3f}",
+                        'Y max': f"{df['y'].max():.3f}",
+                        'Y mean': f"{df['y'].mean():.3f}",
                         'Y std': f"{df['y'].std():.3f}"
                     }
                     stats_data.append(stats)
@@ -1262,19 +1425,19 @@ with tab3:
             stats_df = pd.DataFrame(stats_data)
             st.dataframe(stats_df, use_container_width=True)
             
-            # Экспорт данных
-            st.subheader("Экспорт данных")
+            # Data export
+            st.subheader("Data Export")
             
-            # CSV со статистикой
+            # CSV with statistics
             csv_stats = stats_df.to_csv(index=False, sep='\t').encode('utf-8')
             st.download_button(
-                label="📥 Скачать статистику (CSV)",
+                label="📥 Download Statistics (CSV)",
                 data=csv_stats,
                 file_name="data_statistics.csv",
                 mime="text/csv"
             )
             
-            # Экспорт всех данных с настройками
+            # Export all data with settings
             all_data_with_settings = export_all_data_with_settings(
                 st.session_state.datasets,
                 st.session_state.x_axis_label,
@@ -1288,101 +1451,121 @@ with tab3:
                 st.session_state.y_max,
                 st.session_state.y_step,
                 st.session_state.marker_size,
-                st.session_state.legend_fontsize
+                st.session_state.legend_fontsize,
+                st.session_state.graph_settings
             )
             
             st.download_button(
-                label="📥 Скачать ВСЕ данные с настройками (CSV)",
+                label="📥 Download ALL Data with Settings (CSV)",
                 data=all_data_with_settings.encode('utf-8'),
                 file_name="all_data_with_settings.csv",
                 mime="text/csv",
-                help="Этот файл содержит все данные и настройки. Его можно загрузить обратно в приложение."
+                help="This file contains all data and settings. It can be loaded back into the application."
             )
             
-            # Предпросмотр экспортируемых данных
-            with st.expander("Предпросмотр экспортируемых данных с настройками"):
+            # Preview of exported data
+            with st.expander("Preview of Exported Data with Settings"):
                 st.code(all_data_with_settings[:2000], language='text')
                 if len(all_data_with_settings) > 2000:
-                    st.info(f"И ещё {len(all_data_with_settings) - 2000} символов...")
+                    st.info(f"And {len(all_data_with_settings) - 2000} more characters...")
         
-        # Настройки осей
-        st.subheader("Настройки осей")
+        # Axis settings
+        st.subheader("Axis Settings")
         col1, col2 = st.columns(2)
         
         with col1:
-            st.info(f"**Ось X:** {format_axis_label(st.session_state.x_axis_label)}")
+            st.info(f"**X Axis:** {format_axis_label(st.session_state.x_axis_label)}")
             if st.session_state.x_manual:
-                st.write(f"Ручная настройка: ВКЛ")
-                st.write(f"Минимум: {st.session_state.x_min:.3f}" if st.session_state.x_min is not None else "Не задано")
-                st.write(f"Максимум: {st.session_state.x_max:.3f}" if st.session_state.x_max is not None else "Не задано")
-                st.write(f"Шаг: {st.session_state.x_step:.3f}" if st.session_state.x_step is not None else "Не задано")
+                st.write(f"Manual configuration: ON")
+                st.write(f"Min: {st.session_state.x_min:.3f}" if st.session_state.x_min is not None else "Not set")
+                st.write(f"Max: {st.session_state.x_max:.3f}" if st.session_state.x_max is not None else "Not set")
+                st.write(f"Step: {st.session_state.x_step:.3f}" if st.session_state.x_step is not None else "Not set")
             else:
-                st.write("Ручная настройка: ВЫКЛ")
+                st.write("Manual configuration: OFF")
                 auto_limits = auto_detect_axis_limits(st.session_state.datasets)
-                st.write(f"Автоопределение: от {auto_limits['x_min']:.3f} до {auto_limits['x_max']:.3f}")
+                st.write(f"Auto-detection: from {auto_limits['x_min']:.3f} to {auto_limits['x_max']:.3f}")
         
         with col2:
-            st.info(f"**Ось Y:** {format_axis_label(st.session_state.y_axis_label)}")
+            st.info(f"**Y Axis:** {format_axis_label(st.session_state.y_axis_label)}")
             if st.session_state.y_manual:
-                st.write(f"Ручная настройка: ВКЛ")
-                st.write(f"Минимум: {st.session_state.y_min:.3f}" if st.session_state.y_min is not None else "Не задано")
-                st.write(f"Максимум: {st.session_state.y_max:.3f}" if st.session_state.y_max is not None else "Не задано")
-                st.write(f"Шаг: {st.session_state.y_step:.3f}" if st.session_state.y_step is not None else "Не задано")
+                st.write(f"Manual configuration: ON")
+                st.write(f"Min: {st.session_state.y_min:.3f}" if st.session_state.y_min is not None else "Not set")
+                st.write(f"Max: {st.session_state.y_max:.3f}" if st.session_state.y_max is not None else "Not set")
+                st.write(f"Step: {st.session_state.y_step:.3f}" if st.session_state.y_step is not None else "Not set")
             else:
-                st.write("Ручная настройка: ВЫКЛ")
+                st.write("Manual configuration: OFF")
                 auto_limits = auto_detect_axis_limits(st.session_state.datasets)
-                st.write(f"Автоопределение: от {auto_limits['y_min']:.3f} до {auto_limits['y_max']:.3f}")
+                st.write(f"Auto-detection: from {auto_limits['y_min']:.3f} to {auto_limits['y_max']:.3f}")
         
-        # Настройки отображения
-        st.subheader("Настройки отображения")
+        # Graph settings
+        st.subheader("Graph Settings")
         col1, col2 = st.columns(2)
         with col1:
-            st.info(f"**Размер маркеров:** {st.session_state.marker_size}")
+            st.info(f"**Marker Size:** {st.session_state.marker_size}")
+            st.info(f"**Legend Font Size:** {st.session_state.legend_fontsize}")
         with col2:
-            st.info(f"**Размер шрифта легенды:** {st.session_state.legend_fontsize}")
+            grid_status = "ON" if st.session_state.graph_settings['grid_visible'] else "OFF"
+            st.info(f"**Grid:** {grid_status}")
+            st.info(f"**Border Width:** {st.session_state.graph_settings['border_width']}")
         
-        # Информация о наборах данных
-        st.subheader("Информация о наборах данных")
+        # Color indicators
+        st.subheader("Color Settings")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("**Background Color:**")
+            color_box = f'<div style="width: 100px; height: 30px; background-color: {st.session_state.graph_settings["background_color"]}; border: 1px solid #ccc; border-radius: 5px;"></div>'
+            st.markdown(color_box, unsafe_allow_html=True)
+        with col2:
+            st.markdown("**Grid Color:**")
+            color_box = f'<div style="width: 100px; height: 30px; background-color: {st.session_state.graph_settings["grid_color"]}; border: 1px solid #ccc; border-radius: 5px;"></div>'
+            st.markdown(color_box, unsafe_allow_html=True)
+        with col3:
+            st.markdown("**Border Color:**")
+            color_box = f'<div style="width: 100px; height: 30px; background-color: {st.session_state.graph_settings["border_color"]}; border: 1px solid #ccc; border-radius: 5px;"></div>'
+            st.markdown(color_box, unsafe_allow_html=True)
+        
+        # Dataset information
+        st.subheader("Dataset Information")
         for i, dataset in enumerate(st.session_state.datasets):
             col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
                 st.markdown(f"**{dataset['name']}**")
             with col2:
                 color_box = f'<span style="display: inline-block; width: 20px; height: 20px; background-color: {dataset["color"]}; border-radius: 3px;"></span>'
-                st.markdown(f"Цвет: {color_box}", unsafe_allow_html=True)
+                st.markdown(f"Color: {color_box}", unsafe_allow_html=True)
             with col3:
-                st.markdown(f"Маркер: {dataset['marker']}")
+                st.markdown(f"Marker: {dataset['marker']}")
             with col4:
                 df = parse_data(dataset['data'], dataset['name'])
-                st.markdown(f"Точек: {len(df)}")
+                st.markdown(f"Points: {len(df)}")
             with col5:
-                status = "✅ Активен" if dataset['active'] else "❌ Не активен"
+                status = "✅ Active" if dataset['active'] else "❌ Inactive"
                 st.markdown(status)
                 
     else:
-        st.info("Нет данных для отображения статистики. Добавьте наборы данных и введите данные во вкладке 'Данные', затем постройте графики во вкладке 'Графики'.")
+        st.info("No data to display statistics. Add datasets and enter data in the 'Data' tab, then create plots in the 'Plots' tab.")
 
-# Футер
+# Footer
 st.markdown("---")
-st.markdown("### Инструкция по использованию:")
+st.markdown("### Usage Instructions:")
 st.markdown("""
-1. **Боковая панель**: 
-   - Настройте размер маркеров и шрифта легенды в разделе "Настройки отображения"
-   - Нажмите "➕ Добавить новый набор данных" для создания наборов
-   - Задайте названия осей
-   - Система автоматически подбирает границы осей на основе данных
-   - Включите "Настроить ось X/Y" для ручной настройки границ
-   - Используйте кнопку "Сбросить к автоматическим значениям" для возврата к автоопределению
-   - Загрузите ранее экспортированные данные с настройками (опционально)
-   - Нажмите кнопку "Применить загруженные данные" для использования импортированных настроек
-2. **Вкладка 'Данные'**: Введите значения X и Y через табуляцию для каждого набора. Система показывает автоматически определенные границы.
-3. **Вкладка 'Графики'**: Нажмите кнопку "Построить графики" для визуализации
-4. **Вкладка 'Статистика'**: 
-   - Просмотрите статистику данных
-   - Экспортируйте статистику отдельно
-   - Экспортируйте ВСЕ данные с настройками для последующей загрузки
+1. **Sidebar**: 
+   - Configure marker size and legend font size in "Display Settings"
+   - Click "➕ Add New Dataset" to create datasets
+   - Set axis labels
+   - System automatically selects axis boundaries based on data
+   - Enable "Configure X/Y Axis" for manual boundary configuration
+   - Use "Reset to Automatic Values" button to return to auto-detection
+   - Configure graph appearance (background color, grid, borders) in "Graph Appearance"
+   - Click "🗑️ Clear All Settings" to reset everything
+   - Load previously exported data with settings (optional)
+   - Click "Apply Loaded Data" button to use imported settings
+2. **'Data' tab**: Enter X and Y values separated by tabs for each dataset. System shows auto-detected boundaries.
+3. **'Plots' tab**: Click "Create Plots" button for visualization
+4. **'Statistics' tab**: 
+   - View data statistics
+   - Export statistics separately
+   - Export ALL data with settings for subsequent loading
 
-**Важно**: Файл "Скачать ВСЕ данные с настройками" содержит все параметры (включая размер маркеров и легенды) и может быть загружен обратно через боковую панель.
+**Important**: The "Download ALL Data with Settings" file contains all parameters (including marker size, legend size, and graph appearance settings) and can be loaded back via the sidebar.
 """)
-
-
