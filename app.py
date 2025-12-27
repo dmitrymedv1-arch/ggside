@@ -64,7 +64,7 @@ def parse_data(text, dataset_name):
     return pd.DataFrame()
 
 # Improved density estimation function with smooth transition to zero
-def estimate_density(data, extend_range=True, padding_factor=0.3):
+def estimate_density(data, extend_range=True, padding_factor=0.3, normalize=True):
     """Estimates density distribution with smooth transition to zero"""
     if len(data) > 1:
         kde = gaussian_kde(data)
@@ -106,8 +106,8 @@ def estimate_density(data, extend_range=True, padding_factor=0.3):
             # Apply window function
             density = density * window
             
-            # Normalize density for display (0-1)
-            if density.max() > 0:
+            # Normalize density for display (0-1) if requested
+            if normalize and density.max() > 0:
                 density = density / density.max()
             
             return x_vals, density
@@ -116,8 +116,8 @@ def estimate_density(data, extend_range=True, padding_factor=0.3):
             x_vals = np.linspace(data_min, data_max, 500)
             density = kde(x_vals)
             
-            # Normalize density
-            if density.max() > 0:
+            # Normalize density if requested
+            if normalize and density.max() > 0:
                 density = density / density.max()
             
             return x_vals, density
@@ -126,7 +126,7 @@ def estimate_density(data, extend_range=True, padding_factor=0.3):
 # Function to configure axes with customizable borders
 def set_custom_axes(ax, border_color='black', border_width=2.5, grid_color='lightgray', 
                     grid_visible=True, background_color='white', tick_fontsize=10, 
-                    label_fontsize=12, axis_label_scale_factor=1.2):
+                    label_fontsize=12, title_fontsize=14):
     """Sets customizable borders, grid, and font sizes for plot axes"""
     # Set background color
     ax.set_facecolor(background_color)
@@ -144,14 +144,16 @@ def set_custom_axes(ax, border_color='black', border_width=2.5, grid_color='ligh
     ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
     ax.tick_params(axis='both', which='minor', labelsize=tick_fontsize-2)
     
-    # Set axis label color
+    # Set axis label color and font size
     ax.xaxis.label.set_color(border_color)
     ax.yaxis.label.set_color(border_color)
+    ax.xaxis.label.set_fontsize(label_fontsize)
+    ax.yaxis.label.set_fontsize(label_fontsize)
     
-    # Set title color (if any)
+    # Set title color and font size (if any)
     if ax.get_title():
         ax.title.set_color(border_color)
-        ax.title.set_fontsize(label_fontsize * axis_label_scale_factor)
+        ax.title.set_fontsize(title_fontsize)
     
     # Configure grid
     if grid_visible:
@@ -162,32 +164,29 @@ def set_custom_axes(ax, border_color='black', border_width=2.5, grid_color='ligh
     return ax
 
 # Function to export all data with settings
-def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual, 
-                                 x_min_val, x_max_val, x_step_val, 
+def export_all_data_with_settings(datasets, x_label, y_label, plot_title, legend_title,
+                                 x_manual, y_manual, x_min_val, x_max_val, x_step_val, 
                                  y_min_val, y_max_val, y_step_val,
-                                 marker_size, marker_scale,
-                                 legend_fontsize, legend_scale,
-                                 axis_label_fontsize, axis_label_scale,
-                                 tick_fontsize, tick_scale,
-                                 graph_settings):
+                                 marker_size, legend_fontsize,
+                                 axis_label_fontsize, tick_fontsize,
+                                 graph_settings, normalize_density):
     """Creates CSV file with data and all settings"""
     
     # Create export structure
     export_dict = {
         'metadata': {
-            'version': '1.2',
+            'version': '1.3',
             'x_axis_label': x_label,
             'y_axis_label': y_label,
+            'plot_title': plot_title,
+            'legend_title': legend_title,
             'num_datasets': len(datasets),
             'export_timestamp': pd.Timestamp.now().isoformat(),
             'marker_size': marker_size,
-            'marker_scale': marker_scale,
             'legend_fontsize': legend_fontsize,
-            'legend_scale': legend_scale,
             'axis_label_fontsize': axis_label_fontsize,
-            'axis_label_scale': axis_label_scale,
             'tick_fontsize': tick_fontsize,
-            'tick_scale': tick_scale
+            'normalize_density': normalize_density
         },
         'axis_settings': {
             'x_manual': x_manual,
@@ -235,16 +234,15 @@ def export_all_data_with_settings(datasets, x_label, y_label, x_manual, y_manual
     lines.append("# META DATA SECTION")
     lines.append(f"x_axis_label: {x_label}")
     lines.append(f"y_axis_label: {y_label}")
+    lines.append(f"plot_title: {plot_title}")
+    lines.append(f"legend_title: {legend_title}")
     lines.append(f"num_datasets: {len(datasets)}")
     lines.append(f"export_timestamp: {export_dict['metadata']['export_timestamp']}")
     lines.append(f"marker_size: {marker_size}")
-    lines.append(f"marker_scale: {marker_scale}")
     lines.append(f"legend_fontsize: {legend_fontsize}")
-    lines.append(f"legend_scale: {legend_scale}")
     lines.append(f"axis_label_fontsize: {axis_label_fontsize}")
-    lines.append(f"axis_label_scale: {axis_label_scale}")
     lines.append(f"tick_fontsize: {tick_fontsize}")
-    lines.append(f"tick_scale: {tick_scale}")
+    lines.append(f"normalize_density: {normalize_density}")
     lines.append("")
     
     # 2. Axis settings
@@ -291,6 +289,8 @@ def import_data_with_settings(file_content):
     # Initialize variables
     x_axis_label = "X Axis"
     y_axis_label = "Y Axis"
+    plot_title = ""
+    legend_title = "Datasets"
     x_manual = False
     y_manual = False
     x_min = None
@@ -300,13 +300,10 @@ def import_data_with_settings(file_content):
     y_max = None
     y_step = None
     marker_size = 50
-    marker_scale = 1.0
     legend_fontsize = 10
-    legend_scale = 1.0
     axis_label_fontsize = 12
-    axis_label_scale = 1.2
     tick_fontsize = 10
-    tick_scale = 1.0
+    normalize_density = True
     graph_settings = {
         'background_color': '#FFFFFF',
         'grid_color': '#CCCCCC',
@@ -351,46 +348,35 @@ def import_data_with_settings(file_content):
                 x_axis_label = line.split(":", 1)[1].strip()
             elif line.startswith("y_axis_label:"):
                 y_axis_label = line.split(":", 1)[1].strip()
+            elif line.startswith("plot_title:"):
+                plot_title = line.split(":", 1)[1].strip()
+            elif line.startswith("legend_title:"):
+                legend_title = line.split(":", 1)[1].strip()
             elif line.startswith("marker_size:"):
                 try:
                     marker_size = int(line.split(":", 1)[1].strip())
                 except:
                     marker_size = 50
-            elif line.startswith("marker_scale:"):
-                try:
-                    marker_scale = float(line.split(":", 1)[1].strip())
-                except:
-                    marker_scale = 1.0
             elif line.startswith("legend_fontsize:"):
                 try:
                     legend_fontsize = float(line.split(":", 1)[1].strip())
                 except:
                     legend_fontsize = 10
-            elif line.startswith("legend_scale:"):
-                try:
-                    legend_scale = float(line.split(":", 1)[1].strip())
-                except:
-                    legend_scale = 1.0
             elif line.startswith("axis_label_fontsize:"):
                 try:
                     axis_label_fontsize = float(line.split(":", 1)[1].strip())
                 except:
                     axis_label_fontsize = 12
-            elif line.startswith("axis_label_scale:"):
-                try:
-                    axis_label_scale = float(line.split(":", 1)[1].strip())
-                except:
-                    axis_label_scale = 1.2
             elif line.startswith("tick_fontsize:"):
                 try:
                     tick_fontsize = float(line.split(":", 1)[1].strip())
                 except:
                     tick_fontsize = 10
-            elif line.startswith("tick_scale:"):
+            elif line.startswith("normalize_density:"):
                 try:
-                    tick_scale = float(line.split(":", 1)[1].strip())
+                    normalize_density = line.split(":", 1)[1].strip().lower() == 'true'
                 except:
-                    tick_scale = 1.0
+                    normalize_density = True
         
         # Process axis settings
         elif current_section == "axis_settings":
@@ -504,7 +490,7 @@ def import_data_with_settings(file_content):
         'y_step': y_step
     }
     
-    return datasets, x_axis_label, y_axis_label, axis_settings, marker_size, marker_scale, legend_fontsize, legend_scale, axis_label_fontsize, axis_label_scale, tick_fontsize, tick_scale, graph_settings
+    return datasets, x_axis_label, y_axis_label, plot_title, legend_title, axis_settings, marker_size, legend_fontsize, axis_label_fontsize, tick_fontsize, normalize_density, graph_settings
 
 # Main title
 st.title("📊 Data Visualization with Marginal Distributions")
@@ -519,6 +505,15 @@ if 'x_axis_label' not in st.session_state:
 
 if 'y_axis_label' not in st.session_state:
     st.session_state.y_axis_label = 'Y Axis'
+
+if 'plot_title' not in st.session_state:
+    st.session_state.plot_title = ''
+
+if 'legend_title' not in st.session_state:
+    st.session_state.legend_title = 'Datasets'
+
+if 'normalize_density' not in st.session_state:
+    st.session_state.normalize_density = True
 
 # Initialize axis settings state
 if 'x_manual' not in st.session_state:
@@ -555,25 +550,6 @@ if 'graph_settings' not in st.session_state:
         'border_width': 2.5
     }
 
-# Initialize scaling settings state
-if 'marker_scale' not in st.session_state:
-    st.session_state.marker_scale = 1.0
-
-if 'legend_scale' not in st.session_state:
-    st.session_state.legend_scale = 1.0
-
-if 'axis_label_fontsize' not in st.session_state:
-    st.session_state.axis_label_fontsize = 12
-
-if 'axis_label_scale' not in st.session_state:
-    st.session_state.axis_label_scale = 1.2
-
-if 'tick_fontsize' not in st.session_state:
-    st.session_state.tick_fontsize = 10
-
-if 'tick_scale' not in st.session_state:
-    st.session_state.tick_scale = 1.0
-
 # Initialize imported data state
 if 'imported_file_content' not in st.session_state:
     st.session_state.imported_file_content = None
@@ -587,32 +563,29 @@ if 'imported_x_label' not in st.session_state:
 if 'imported_y_label' not in st.session_state:
     st.session_state.imported_y_label = None
 
+if 'imported_plot_title' not in st.session_state:
+    st.session_state.imported_plot_title = None
+
+if 'imported_legend_title' not in st.session_state:
+    st.session_state.imported_legend_title = None
+
 if 'imported_axis_settings' not in st.session_state:
     st.session_state.imported_axis_settings = None
 
 if 'imported_marker_size' not in st.session_state:
     st.session_state.imported_marker_size = 50
 
-if 'imported_marker_scale' not in st.session_state:
-    st.session_state.imported_marker_scale = 1.0
-
 if 'imported_legend_fontsize' not in st.session_state:
     st.session_state.imported_legend_fontsize = 10
-
-if 'imported_legend_scale' not in st.session_state:
-    st.session_state.imported_legend_scale = 1.0
 
 if 'imported_axis_label_fontsize' not in st.session_state:
     st.session_state.imported_axis_label_fontsize = 12
 
-if 'imported_axis_label_scale' not in st.session_state:
-    st.session_state.imported_axis_label_scale = 1.2
-
 if 'imported_tick_fontsize' not in st.session_state:
     st.session_state.imported_tick_fontsize = 10
 
-if 'imported_tick_scale' not in st.session_state:
-    st.session_state.imported_tick_scale = 1.0
+if 'imported_normalize_density' not in st.session_state:
+    st.session_state.imported_normalize_density = True
 
 if 'imported_graph_settings' not in st.session_state:
     st.session_state.imported_graph_settings = None
@@ -627,6 +600,12 @@ if 'marker_size' not in st.session_state:
 
 if 'legend_fontsize' not in st.session_state:
     st.session_state.legend_fontsize = 10
+
+if 'axis_label_fontsize' not in st.session_state:
+    st.session_state.axis_label_fontsize = 12
+
+if 'tick_fontsize' not in st.session_state:
+    st.session_state.tick_fontsize = 10
 
 # Available markers for matplotlib and Plotly
 matplotlib_markers = {
@@ -716,6 +695,7 @@ def auto_detect_axis_limits(datasets):
         'y_max': round(y_max_auto, 3),
         'y_step': round(y_step_auto, 3)
     }
+}
 
 # Function to reset all settings
 def reset_all_settings():
@@ -723,6 +703,8 @@ def reset_all_settings():
     st.session_state.datasets = []
     st.session_state.x_axis_label = 'X Axis'
     st.session_state.y_axis_label = 'Y Axis'
+    st.session_state.plot_title = ''
+    st.session_state.legend_title = 'Datasets'
     st.session_state.x_manual = False
     st.session_state.y_manual = False
     st.session_state.x_min = None
@@ -732,13 +714,10 @@ def reset_all_settings():
     st.session_state.y_max = None
     st.session_state.y_step = None
     st.session_state.marker_size = 50
-    st.session_state.marker_scale = 1.0
     st.session_state.legend_fontsize = 10
-    st.session_state.legend_scale = 1.0
     st.session_state.axis_label_fontsize = 12
-    st.session_state.axis_label_scale = 1.2
     st.session_state.tick_fontsize = 10
-    st.session_state.tick_scale = 1.0
+    st.session_state.normalize_density = True
     st.session_state.graph_settings = {
         'background_color': '#FFFFFF',
         'grid_color': '#CCCCCC',
@@ -775,18 +754,57 @@ with st.sidebar:
         st.session_state.datasets.pop()
         st.rerun()
     
-    # 2. Axis Settings
-    st.subheader("Axis Settings")
+    # 2. Title and Label Settings
+    st.subheader("Title and Label Settings")
+    
+    st.session_state.plot_title = st.text_input(
+        "Plot Title",
+        value=st.session_state.plot_title,
+        key="plot_title_input"
+    )
+    
     st.session_state.x_axis_label = st.text_input(
         "X Axis Label",
         value=st.session_state.x_axis_label,
         key="x_axis_label_input"
     )
+    
     st.session_state.y_axis_label = st.text_input(
         "Y Axis Label",
         value=st.session_state.y_axis_label,
         key="y_axis_label_input"
     )
+    
+    st.session_state.legend_title = st.text_input(
+        "Legend Title",
+        value=st.session_state.legend_title,
+        key="legend_title_input"
+    )
+    
+    # 3. Marginal Distributions Settings
+    st.subheader("Marginal Distributions")
+    
+    st.session_state.normalize_density = st.checkbox(
+        "Normalize Marginal Distributions",
+        value=st.session_state.normalize_density,
+        help="When checked, marginal distributions are normalized to [0,1]. When unchecked, shows actual density values.",
+        key="normalize_density_checkbox"
+    )
+    
+    # 4. Axis Boundaries Management
+    st.subheader("Axis Boundaries Management")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        x_manual = st.checkbox("Configure X Axis", 
+                              value=st.session_state.x_manual,
+                              key="x_manual_checkbox")
+        st.session_state.x_manual = x_manual
+    with col2:
+        y_manual = st.checkbox("Configure Y Axis", 
+                              value=st.session_state.y_manual,
+                              key="y_manual_checkbox")
+        st.session_state.y_manual = y_manual
     
     # Automatic axis limits detection
     auto_limits = auto_detect_axis_limits(st.session_state.datasets)
@@ -804,21 +822,6 @@ with st.sidebar:
         st.session_state.y_max = auto_limits['y_max']
     if st.session_state.y_step is None:
         st.session_state.y_step = auto_limits['y_step']
-    
-    # 3. Axis Boundaries Management
-    st.subheader("Axis Boundaries Management")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        x_manual = st.checkbox("Configure X Axis", 
-                              value=st.session_state.x_manual,
-                              key="x_manual_checkbox")
-        st.session_state.x_manual = x_manual
-    with col2:
-        y_manual = st.checkbox("Configure Y Axis", 
-                              value=st.session_state.y_manual,
-                              key="y_manual_checkbox")
-        st.session_state.y_manual = y_manual
     
     if x_manual:
         col1, col2, col3 = st.columns(3)
@@ -886,116 +889,58 @@ with st.sidebar:
         st.session_state.y_step = auto_limits['y_step']
         st.rerun()
     
-    # 4. Display Settings
+    # 5. Display Settings
     st.subheader("Display Settings")
     
     # Marker size settings
-    col1, col2 = st.columns(2)
-    with col1:
-        marker_size = st.slider(
-            "Base Marker Size",
-            min_value=10,
-            max_value=200,
-            value=st.session_state.marker_size,
-            step=5,
-            key="marker_size_slider",
-            help="Base size of all markers on plots"
-        )
-        st.session_state.marker_size = marker_size
+    marker_size = st.slider(
+        "Marker Size",
+        min_value=10,
+        max_value=200,
+        value=st.session_state.marker_size,
+        step=5,
+        key="marker_size_slider",
+        help="Size of markers on plots"
+    )
+    st.session_state.marker_size = marker_size
     
-    with col2:
-        marker_scale = st.slider(
-            "Marker Scale Factor",
-            min_value=0.1,
-            max_value=3.0,
-            value=st.session_state.marker_scale,
-            step=0.1,
-            key="marker_scale_slider",
-            help="Multiplier for marker size (1.0 = normal)"
-        )
-        st.session_state.marker_scale = marker_scale
+    # Font size settings
+    st.markdown("**Font Sizes**")
     
-    # Legend settings
-    col1, col2 = st.columns(2)
-    with col1:
-        legend_fontsize = st.slider(
-            "Base Legend Font Size",
-            min_value=6,
-            max_value=24,
-            value=st.session_state.legend_fontsize,
-            step=1,
-            key="legend_fontsize_slider",
-            help="Base font size in plot legends"
-        )
-        st.session_state.legend_fontsize = legend_fontsize
+    legend_fontsize = st.slider(
+        "Legend Font Size",
+        min_value=6,
+        max_value=24,
+        value=st.session_state.legend_fontsize,
+        step=1,
+        key="legend_fontsize_slider",
+        help="Font size in plot legends"
+    )
+    st.session_state.legend_fontsize = legend_fontsize
     
-    with col2:
-        legend_scale = st.slider(
-            "Legend Scale Factor",
-            min_value=0.1,
-            max_value=3.0,
-            value=st.session_state.legend_scale,
-            step=0.1,
-            key="legend_scale_slider",
-            help="Multiplier for legend font size (1.0 = normal)"
-        )
-        st.session_state.legend_scale = legend_scale
+    axis_label_fontsize = st.slider(
+        "Axis Label Font Size",
+        min_value=8,
+        max_value=24,
+        value=st.session_state.axis_label_fontsize,
+        step=1,
+        key="axis_label_fontsize_slider",
+        help="Font size for axis labels"
+    )
+    st.session_state.axis_label_fontsize = axis_label_fontsize
     
-    # Axis label settings
-    st.markdown("**Axis Labels**")
-    col1, col2 = st.columns(2)
-    with col1:
-        axis_label_fontsize = st.slider(
-            "Base Label Font Size",
-            min_value=8,
-            max_value=24,
-            value=st.session_state.axis_label_fontsize,
-            step=1,
-            key="axis_label_fontsize_slider",
-            help="Base font size for axis labels"
-        )
-        st.session_state.axis_label_fontsize = axis_label_fontsize
+    tick_fontsize = st.slider(
+        "Tick Label Font Size",
+        min_value=6,
+        max_value=20,
+        value=st.session_state.tick_fontsize,
+        step=1,
+        key="tick_fontsize_slider",
+        help="Font size for tick labels (numbers on axes)"
+    )
+    st.session_state.tick_fontsize = tick_fontsize
     
-    with col2:
-        axis_label_scale = st.slider(
-            "Label Scale Factor",
-            min_value=0.5,
-            max_value=2.0,
-            value=st.session_state.axis_label_scale,
-            step=0.1,
-            key="axis_label_scale_slider",
-            help="Multiplier for axis label size relative to ticks"
-        )
-        st.session_state.axis_label_scale = axis_label_scale
-    
-    # Tick label settings
-    st.markdown("**Tick Labels (numbers on axes)**")
-    col1, col2 = st.columns(2)
-    with col1:
-        tick_fontsize = st.slider(
-            "Base Tick Font Size",
-            min_value=6,
-            max_value=20,
-            value=st.session_state.tick_fontsize,
-            step=1,
-            key="tick_fontsize_slider",
-            help="Base font size for tick labels (numbers on axes)"
-        )
-        st.session_state.tick_fontsize = tick_fontsize
-    
-    with col2:
-        tick_scale = st.slider(
-            "Tick Scale Factor",
-            min_value=0.5,
-            max_value=2.0,
-            value=st.session_state.tick_scale,
-            step=0.1,
-            key="tick_scale_slider",
-            help="Multiplier for tick label size"
-        )
-        st.session_state.tick_scale = tick_scale
-    
-    # 5. Graph Appearance Settings
+    # 6. Graph Appearance Settings
     st.subheader("Graph Appearance")
     
     # Background color
@@ -1040,7 +985,7 @@ with st.sidebar:
     )
     st.session_state.graph_settings['border_width'] = border_width
     
-    # 6. Import/Export
+    # 7. Import/Export
     st.subheader("Import/Export")
     
     uploaded_file = st.file_uploader(
@@ -1052,9 +997,8 @@ with st.sidebar:
     if uploaded_file is not None:
         try:
             file_content = uploaded_file.getvalue().decode('utf-8')
-            imported_datasets, imported_x_label, imported_y_label, imported_axis_settings, \
-            imported_marker_size, imported_marker_scale, imported_legend_fontsize, imported_legend_scale, \
-            imported_axis_label_fontsize, imported_axis_label_scale, imported_tick_fontsize, imported_tick_scale, \
+            imported_datasets, imported_x_label, imported_y_label, imported_plot_title, imported_legend_title, imported_axis_settings, \
+            imported_marker_size, imported_legend_fontsize, imported_axis_label_fontsize, imported_tick_fontsize, imported_normalize_density, \
             imported_graph_settings = import_data_with_settings(file_content)
             
             if imported_datasets:
@@ -1062,15 +1006,14 @@ with st.sidebar:
                 st.session_state.imported_datasets = imported_datasets
                 st.session_state.imported_x_label = imported_x_label
                 st.session_state.imported_y_label = imported_y_label
+                st.session_state.imported_plot_title = imported_plot_title
+                st.session_state.imported_legend_title = imported_legend_title
                 st.session_state.imported_axis_settings = imported_axis_settings
                 st.session_state.imported_marker_size = imported_marker_size
-                st.session_state.imported_marker_scale = imported_marker_scale
                 st.session_state.imported_legend_fontsize = imported_legend_fontsize
-                st.session_state.imported_legend_scale = imported_legend_scale
                 st.session_state.imported_axis_label_fontsize = imported_axis_label_fontsize
-                st.session_state.imported_axis_label_scale = imported_axis_label_scale
                 st.session_state.imported_tick_fontsize = imported_tick_fontsize
-                st.session_state.imported_tick_scale = imported_tick_scale
+                st.session_state.imported_normalize_density = imported_normalize_density
                 st.session_state.imported_graph_settings = imported_graph_settings
                 
                 st.success(f"File loaded! Found {len(imported_datasets)} datasets.")
@@ -1092,6 +1035,8 @@ if st.session_state.apply_imported_data and st.session_state.imported_datasets i
     
     st.session_state.x_axis_label = st.session_state.imported_x_label
     st.session_state.y_axis_label = st.session_state.imported_y_label
+    st.session_state.plot_title = st.session_state.imported_plot_title
+    st.session_state.legend_title = st.session_state.imported_legend_title
     
     # Apply axis settings
     if st.session_state.imported_axis_settings:
@@ -1104,15 +1049,12 @@ if st.session_state.apply_imported_data and st.session_state.imported_datasets i
         st.session_state.y_max = st.session_state.imported_axis_settings['y_max']
         st.session_state.y_step = st.session_state.imported_axis_settings['y_step']
     
-    # Apply scaling settings
+    # Apply display settings
     st.session_state.marker_size = st.session_state.imported_marker_size
-    st.session_state.marker_scale = st.session_state.imported_marker_scale
     st.session_state.legend_fontsize = st.session_state.imported_legend_fontsize
-    st.session_state.legend_scale = st.session_state.imported_legend_scale
     st.session_state.axis_label_fontsize = st.session_state.imported_axis_label_fontsize
-    st.session_state.axis_label_scale = st.session_state.imported_axis_label_scale
     st.session_state.tick_fontsize = st.session_state.imported_tick_fontsize
-    st.session_state.tick_scale = st.session_state.imported_tick_scale
+    st.session_state.normalize_density = st.session_state.imported_normalize_density
     
     # Apply graph settings
     if st.session_state.imported_graph_settings:
@@ -1126,15 +1068,14 @@ if st.session_state.apply_imported_data and st.session_state.imported_datasets i
     st.session_state.imported_datasets = None
     st.session_state.imported_x_label = None
     st.session_state.imported_y_label = None
+    st.session_state.imported_plot_title = None
+    st.session_state.imported_legend_title = None
     st.session_state.imported_axis_settings = None
     st.session_state.imported_marker_size = 50
-    st.session_state.imported_marker_scale = 1.0
     st.session_state.imported_legend_fontsize = 10
-    st.session_state.imported_legend_scale = 1.0
     st.session_state.imported_axis_label_fontsize = 12
-    st.session_state.imported_axis_label_scale = 1.2
     st.session_state.imported_tick_fontsize = 10
-    st.session_state.imported_tick_scale = 1.0
+    st.session_state.imported_normalize_density = True
     st.session_state.imported_graph_settings = None
     st.session_state.apply_imported_data = False
     
@@ -1220,14 +1161,12 @@ with tab1:
 with tab2:
     st.header("Data Visualization")
     
-    # Show current scaling settings
+    # Show current display settings
     col1, col2, col3 = st.columns(3)
     with col1:
-        actual_marker_size = st.session_state.marker_size * st.session_state.marker_scale
-        st.info(f"📏 Marker Size: **{st.session_state.marker_size} × {st.session_state.marker_scale:.1f} = {actual_marker_size:.0f}**")
+        st.info(f"📏 Marker Size: **{st.session_state.marker_size}**")
     with col2:
-        actual_legend_size = st.session_state.legend_fontsize * st.session_state.legend_scale
-        st.info(f"🔤 Legend Size: **{st.session_state.legend_fontsize} × {st.session_state.legend_scale:.1f} = {actual_legend_size:.1f}**")
+        st.info(f"🔤 Legend Font Size: **{st.session_state.legend_fontsize}**")
     with col3:
         grid_status = "ON" if st.session_state.graph_settings['grid_visible'] else "OFF"
         st.info(f"📐 Grid: **{grid_status}**")
@@ -1235,11 +1174,17 @@ with tab2:
     # Show axis label settings
     col1, col2 = st.columns(2)
     with col1:
-        actual_label_size = st.session_state.axis_label_fontsize * st.session_state.axis_label_scale
-        actual_tick_size = st.session_state.tick_fontsize * st.session_state.tick_scale
-        st.info(f"📝 Axis Labels: **{st.session_state.axis_label_fontsize} × {st.session_state.axis_label_scale:.1f} = {actual_label_size:.1f}**")
+        st.info(f"📝 Axis Labels: **{st.session_state.axis_label_fontsize}**")
     with col2:
-        st.info(f"🔢 Tick Labels: **{st.session_state.tick_fontsize} × {st.session_state.tick_scale:.1f} = {actual_tick_size:.1f}**")
+        st.info(f"🔢 Tick Labels: **{st.session_state.tick_fontsize}**")
+    
+    # Show title settings
+    if st.session_state.plot_title:
+        st.info(f"📋 Plot Title: **{st.session_state.plot_title}**")
+    
+    # Show marginal distribution setting
+    density_status = "NORMALIZED" if st.session_state.normalize_density else "ACTUAL DENSITY"
+    st.info(f"📊 Marginal Distributions: **{density_status}**")
     
     # Check if there is data for plotting
     has_data = False
@@ -1287,12 +1232,6 @@ with tab2:
                     auto_y_max = st.session_state.y_max
                     auto_y_step = st.session_state.y_step
                 
-                # Calculate actual sizes with scaling
-                actual_marker_size = st.session_state.marker_size * st.session_state.marker_scale
-                actual_legend_fontsize = st.session_state.legend_fontsize * st.session_state.legend_scale
-                actual_axis_label_fontsize = st.session_state.axis_label_fontsize * st.session_state.axis_label_scale
-                actual_tick_fontsize = st.session_state.tick_fontsize * st.session_state.tick_scale
-                
                 # Main plot with marginal distributions
                 st.subheader("Scatter Plot with Marginal Distributions")
                 
@@ -1310,16 +1249,16 @@ with tab2:
                 ax_top[1].axis('off')
                 ax_top = ax_top[0]
 
-                # Apply custom axes settings with scaling
+                # Apply custom axes settings
                 set_custom_axes(ax_top, 
                               border_color=st.session_state.graph_settings['border_color'], 
                               border_width=st.session_state.graph_settings['border_width'],
                               grid_color=st.session_state.graph_settings['grid_color'],
                               grid_visible=st.session_state.graph_settings['grid_visible'],
                               background_color=st.session_state.graph_settings['background_color'],
-                              tick_fontsize=actual_tick_fontsize,
-                              label_fontsize=actual_axis_label_fontsize,
-                              axis_label_scale_factor=st.session_state.axis_label_scale)
+                              tick_fontsize=st.session_state.tick_fontsize,
+                              label_fontsize=st.session_state.axis_label_fontsize,
+                              title_fontsize=st.session_state.axis_label_fontsize)
                 
                 set_custom_axes(ax_main, 
                               border_color=st.session_state.graph_settings['border_color'], 
@@ -1327,9 +1266,9 @@ with tab2:
                               grid_color=st.session_state.graph_settings['grid_color'],
                               grid_visible=st.session_state.graph_settings['grid_visible'],
                               background_color=st.session_state.graph_settings['background_color'],
-                              tick_fontsize=actual_tick_fontsize,
-                              label_fontsize=actual_axis_label_fontsize,
-                              axis_label_scale_factor=st.session_state.axis_label_scale)
+                              tick_fontsize=st.session_state.tick_fontsize,
+                              label_fontsize=st.session_state.axis_label_fontsize,
+                              title_fontsize=st.session_state.axis_label_fontsize)
                 
                 set_custom_axes(ax_right, 
                               border_color=st.session_state.graph_settings['border_color'], 
@@ -1337,11 +1276,11 @@ with tab2:
                               grid_color=st.session_state.graph_settings['grid_color'],
                               grid_visible=st.session_state.graph_settings['grid_visible'],
                               background_color=st.session_state.graph_settings['background_color'],
-                              tick_fontsize=actual_tick_fontsize,
-                              label_fontsize=actual_axis_label_fontsize,
-                              axis_label_scale_factor=st.session_state.axis_label_scale)
+                              tick_fontsize=st.session_state.tick_fontsize,
+                              label_fontsize=st.session_state.axis_label_fontsize,
+                              title_fontsize=st.session_state.axis_label_fontsize)
 
-                # Draw points on main plot with scaled marker size
+                # Draw points on main plot with marker size
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1351,16 +1290,16 @@ with tab2:
                                 color=dataset['color'],
                                 label=dataset['name'],
                                 marker=matplotlib_markers[dataset['marker']],
-                                s=actual_marker_size,
+                                s=st.session_state.marker_size,
                                 alpha=0.7
                             )
                 
-                # Main plot settings with scaled font sizes
-                ax_main.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=actual_axis_label_fontsize)
-                ax_main.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=actual_axis_label_fontsize)
+                # Main plot settings with font sizes
+                ax_main.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=st.session_state.axis_label_fontsize)
+                ax_main.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=st.session_state.axis_label_fontsize)
                 if len(st.session_state.datasets) > 0:
-                    ax_main.legend(title='Datasets', fontsize=actual_legend_fontsize, 
-                                 title_fontsize=actual_legend_fontsize)
+                    ax_main.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
+                                 title_fontsize=st.session_state.legend_fontsize)
                 if st.session_state.graph_settings['grid_visible']:
                     ax_main.grid(True, alpha=0.3)
                 
@@ -1380,6 +1319,9 @@ with tab2:
                     ax_right.set_ylim(auto_y_min, auto_y_max)
                 
                 # Draw marginal distributions with improved density function
+                max_x_density = 0
+                max_y_density = 0
+                
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1387,32 +1329,50 @@ with tab2:
                             color = dataset['color']
                             
                             # Distribution by X (top plot)
-                            x_vals, density = estimate_density(df['x'].values)
+                            x_vals, density = estimate_density(df['x'].values, normalize=st.session_state.normalize_density)
                             if x_vals is not None and density is not None:
+                                if not st.session_state.normalize_density and density.max() > max_x_density:
+                                    max_x_density = density.max()
                                 ax_top.fill_between(x_vals, 0, density, color=color, alpha=0.3)
                                 ax_top.plot(x_vals, density, color=color, linewidth=1.5)
                             
                             # Distribution by Y (right plot)
-                            y_vals, density = estimate_density(df['y'].values)
+                            y_vals, density = estimate_density(df['y'].values, normalize=st.session_state.normalize_density)
                             if y_vals is not None and density is not None:
+                                if not st.session_state.normalize_density and density.max() > max_y_density:
+                                    max_y_density = density.max()
                                 ax_right.fill_betweenx(y_vals, 0, density, color=color, alpha=0.3)
                                 ax_right.plot(density, y_vals, color=color, linewidth=1.5)
                 
-                # Marginal plot settings with scaled font sizes
-                ax_top.set_ylabel('Density', fontsize=actual_axis_label_fontsize)
-                ax_top.set_ylim(0, 1.1)
+                # Marginal plot settings with font sizes
+                density_label = 'Normalized Density' if st.session_state.normalize_density else 'Density'
+                ax_top.set_ylabel(density_label, fontsize=st.session_state.axis_label_fontsize)
+                
+                if st.session_state.normalize_density:
+                    ax_top.set_ylim(0, 1.1)
+                else:
+                    ax_top.set_ylim(0, max_x_density * 1.1 if max_x_density > 0 else 1.1)
+                
                 ax_top.tick_params(axis='x', labelbottom=False)
                 if st.session_state.graph_settings['grid_visible']:
                     ax_top.grid(True, alpha=0.3)
                 
-                ax_right.set_xlabel('Density', fontsize=actual_axis_label_fontsize)
-                ax_right.set_xlim(0, 1.1)
+                ax_right.set_xlabel(density_label, fontsize=st.session_state.axis_label_fontsize)
+                
+                if st.session_state.normalize_density:
+                    ax_right.set_xlim(0, 1.1)
+                else:
+                    ax_right.set_xlim(0, max_y_density * 1.1 if max_y_density > 0 else 1.1)
+                
                 ax_right.tick_params(axis='y', labelleft=False)
                 if st.session_state.graph_settings['grid_visible']:
                     ax_right.grid(True, alpha=0.3)
                 
                 # Title
-                fig.suptitle('Scatter Plot with Marginal Densities', fontsize=actual_axis_label_fontsize * 1.2, fontweight='bold')
+                if st.session_state.plot_title:
+                    fig.suptitle(st.session_state.plot_title, fontsize=st.session_state.axis_label_fontsize * 1.2, fontweight='bold')
+                else:
+                    fig.suptitle('Scatter Plot with Marginal Densities', fontsize=st.session_state.axis_label_fontsize * 1.2, fontweight='bold')
                 
                 st.pyplot(fig)
                 
@@ -1421,7 +1381,7 @@ with tab2:
                 
                 fig2, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 12))
 
-                # Apply custom settings to all axes with scaling
+                # Apply custom settings to all axes
                 for ax in [ax1, ax2, ax3, ax4]:
                     set_custom_axes(ax, 
                                   border_color=st.session_state.graph_settings['border_color'], 
@@ -1429,11 +1389,11 @@ with tab2:
                                   grid_color=st.session_state.graph_settings['grid_color'],
                                   grid_visible=st.session_state.graph_settings['grid_visible'],
                                   background_color=st.session_state.graph_settings['background_color'],
-                                  tick_fontsize=actual_tick_fontsize,
-                                  label_fontsize=actual_axis_label_fontsize,
-                                  axis_label_scale_factor=st.session_state.axis_label_scale)
+                                  tick_fontsize=st.session_state.tick_fontsize,
+                                  label_fontsize=st.session_state.axis_label_fontsize,
+                                  title_fontsize=st.session_state.axis_label_fontsize)
                 
-                # 1. Main scatter plot with scaled markers
+                # 1. Main scatter plot with markers
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1442,15 +1402,19 @@ with tab2:
                                       color=dataset['color'], 
                                       label=dataset['name'],
                                       marker=matplotlib_markers[dataset['marker']],
-                                      s=actual_marker_size, 
+                                      s=st.session_state.marker_size, 
                                       alpha=0.7)
                 
-                ax1.set_title('Scatter Plot: All Samples', fontsize=actual_axis_label_fontsize * 1.1)
-                ax1.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=actual_axis_label_fontsize)
-                ax1.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=actual_axis_label_fontsize)
+                if st.session_state.plot_title:
+                    ax1_title = st.session_state.plot_title
+                else:
+                    ax1_title = 'Scatter Plot: All Samples'
+                ax1.set_title(ax1_title, fontsize=st.session_state.axis_label_fontsize * 1.1)
+                ax1.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=st.session_state.axis_label_fontsize)
+                ax1.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=st.session_state.axis_label_fontsize)
                 if len(st.session_state.datasets) > 0:
-                    ax1.legend(title='Group', fontsize=actual_legend_fontsize, 
-                             title_fontsize=actual_legend_fontsize)
+                    ax1.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
+                             title_fontsize=st.session_state.legend_fontsize)
                 if st.session_state.graph_settings['grid_visible']:
                     ax1.grid(True, alpha=0.3)
                 
@@ -1469,7 +1433,7 @@ with tab2:
                     ax1.set_ylim(auto_y_min, auto_y_max)
                     ax4.set_ylim(auto_y_min, auto_y_max)
                 
-                # 2. Second scatter plot with scaled markers
+                # 2. Second scatter plot with markers
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1478,60 +1442,79 @@ with tab2:
                                       color=dataset['color'], 
                                       label=dataset['name'],
                                       marker=matplotlib_markers[dataset['marker']],
-                                      s=actual_marker_size, 
+                                      s=st.session_state.marker_size, 
                                       alpha=0.7)
                 
-                ax2.set_title('Scatter Plot', fontsize=actual_axis_label_fontsize * 1.1)
-                ax2.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=actual_axis_label_fontsize)
-                ax2.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=actual_axis_label_fontsize)
+                ax2.set_title('Scatter Plot', fontsize=st.session_state.axis_label_fontsize * 1.1)
+                ax2.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=st.session_state.axis_label_fontsize)
+                ax2.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=st.session_state.axis_label_fontsize)
                 if len(st.session_state.datasets) > 0:
-                    ax2.legend(title='Group', fontsize=actual_legend_fontsize, 
-                             title_fontsize=actual_legend_fontsize)
+                    ax2.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
+                             title_fontsize=st.session_state.legend_fontsize)
                 if st.session_state.graph_settings['grid_visible']:
                     ax2.grid(True, alpha=0.3)
                 
                 # 3. KDE for X
+                max_x_density_single = 0
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
                         if not df.empty and len(df) > 1:
                             color = dataset['color']
-                            x_vals, density = estimate_density(df['x'].values)
+                            x_vals, density = estimate_density(df['x'].values, normalize=st.session_state.normalize_density)
                             if x_vals is not None and density is not None:
+                                if not st.session_state.normalize_density and density.max() > max_x_density_single:
+                                    max_x_density_single = density.max()
                                 ax3.fill_between(x_vals, 0, density, color=color, alpha=0.3)
                                 ax3.plot(x_vals, density, color=color, linewidth=2, label=dataset['name'])
                 
-                ax3.set_title('Distribution by X', fontsize=actual_axis_label_fontsize * 1.1)
-                ax3.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=actual_axis_label_fontsize)
-                ax3.set_ylabel('Normalized Density', fontsize=actual_axis_label_fontsize)
+                ax3.set_title('Distribution by X', fontsize=st.session_state.axis_label_fontsize * 1.1)
+                ax3.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=st.session_state.axis_label_fontsize)
+                density_label_single = 'Normalized Density' if st.session_state.normalize_density else 'Density'
+                ax3.set_ylabel(density_label_single, fontsize=st.session_state.axis_label_fontsize)
                 if len(st.session_state.datasets) > 0:
-                    ax3.legend(title='Group', fontsize=actual_legend_fontsize, 
-                             title_fontsize=actual_legend_fontsize)
+                    ax3.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
+                             title_fontsize=st.session_state.legend_fontsize)
                 if st.session_state.graph_settings['grid_visible']:
                     ax3.grid(True, alpha=0.3)
                 
+                # Set y-lim for non-normalized density
+                if not st.session_state.normalize_density and max_x_density_single > 0:
+                    ax3.set_ylim(0, max_x_density_single * 1.1)
+                
                 # 4. KDE for Y
+                max_y_density_single = 0
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
                         if not df.empty and len(df) > 1:
                             color = dataset['color']
-                            y_vals, density = estimate_density(df['y'].values)
+                            y_vals, density = estimate_density(df['y'].values, normalize=st.session_state.normalize_density)
                             if y_vals is not None and density is not None:
+                                if not st.session_state.normalize_density and density.max() > max_y_density_single:
+                                    max_y_density_single = density.max()
                                 ax4.fill_between(y_vals, 0, density, color=color, alpha=0.3)
                                 ax4.plot(y_vals, density, color=color, linewidth=2, label=dataset['name'])
                 
-                ax4.set_title('Distribution by Y', fontsize=actual_axis_label_fontsize * 1.1)
-                ax4.set_xlabel(format_axis_label(st.session_state.y_axis_label), fontsize=actual_axis_label_fontsize)
-                ax4.set_ylabel('Normalized Density', fontsize=actual_axis_label_fontsize)
+                ax4.set_title('Distribution by Y', fontsize=st.session_state.axis_label_fontsize * 1.1)
+                ax4.set_xlabel(format_axis_label(st.session_state.y_axis_label), fontsize=st.session_state.axis_label_fontsize)
+                ax4.set_ylabel(density_label_single, fontsize=st.session_state.axis_label_fontsize)
                 if len(st.session_state.datasets) > 0:
-                    ax4.legend(title='Group', fontsize=actual_legend_fontsize, 
-                             title_fontsize=actual_legend_fontsize)
+                    ax4.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
+                             title_fontsize=st.session_state.legend_fontsize)
                 if st.session_state.graph_settings['grid_visible']:
                     ax4.grid(True, alpha=0.3)
                 
-                plt.suptitle('Data Analysis with Marginal Distributions', 
-                           fontsize=actual_axis_label_fontsize * 1.3, fontweight='bold')
+                # Set y-lim for non-normalized density
+                if not st.session_state.normalize_density and max_y_density_single > 0:
+                    ax4.set_ylim(0, max_y_density_single * 1.1)
+                
+                if st.session_state.plot_title:
+                    plt.suptitle(st.session_state.plot_title, 
+                               fontsize=st.session_state.axis_label_fontsize * 1.3, fontweight='bold')
+                else:
+                    plt.suptitle('Data Analysis with Marginal Distributions', 
+                               fontsize=st.session_state.axis_label_fontsize * 1.3, fontweight='bold')
                 plt.tight_layout()
                 st.pyplot(fig2)
                 
@@ -1546,7 +1529,7 @@ with tab2:
                     horizontal_spacing=0.15
                 )
                 
-                # Add scatter plots with scaled marker size
+                # Add scatter plots with marker size
                 for i, dataset in enumerate(st.session_state.datasets):
                     if dataset['active']:
                         df = parse_data(dataset['data'], dataset['name'])
@@ -1561,7 +1544,7 @@ with tab2:
                                     marker=dict(
                                         color=dataset['color'],
                                         symbol=plotly_markers.get(dataset['marker'], 'circle'),
-                                        size=actual_marker_size/2,  # Reduce size for Plotly
+                                        size=st.session_state.marker_size/2,  # Reduce size for Plotly
                                         opacity=0.7
                                     ),
                                     showlegend=True
@@ -1579,7 +1562,7 @@ with tab2:
                                     marker=dict(
                                         color=dataset['color'],
                                         symbol=plotly_markers[dataset['marker']],
-                                        size=actual_marker_size/2,  # Reduce size for Plotly
+                                        size=st.session_state.marker_size/2,  # Reduce size for Plotly
                                         opacity=0.7
                                     ),
                                     showlegend=False
@@ -1587,30 +1570,30 @@ with tab2:
                                 row=1, col=2
                             )
                 
-                # Update layout with scaled font sizes
+                # Update layout with font sizes
                 fig_plotly.update_xaxes(
                     title_text=format_axis_label(st.session_state.x_axis_label), 
                     row=1, col=1,
-                    title_font=dict(size=actual_axis_label_fontsize),
-                    tickfont=dict(size=actual_tick_fontsize)
+                    title_font=dict(size=st.session_state.axis_label_fontsize),
+                    tickfont=dict(size=st.session_state.tick_fontsize)
                 )
                 fig_plotly.update_yaxes(
                     title_text=format_axis_label(st.session_state.y_axis_label), 
                     row=1, col=1,
-                    title_font=dict(size=actual_axis_label_fontsize),
-                    tickfont=dict(size=actual_tick_fontsize)
+                    title_font=dict(size=st.session_state.axis_label_fontsize),
+                    tickfont=dict(size=st.session_state.tick_fontsize)
                 )
                 fig_plotly.update_xaxes(
                     title_text=format_axis_label(st.session_state.x_axis_label), 
                     row=1, col=2,
-                    title_font=dict(size=actual_axis_label_fontsize),
-                    tickfont=dict(size=actual_tick_fontsize)
+                    title_font=dict(size=st.session_state.axis_label_fontsize),
+                    tickfont=dict(size=st.session_state.tick_fontsize)
                 )
                 fig_plotly.update_yaxes(
                     title_text=format_axis_label(st.session_state.y_axis_label), 
                     row=1, col=2,
-                    title_font=dict(size=actual_axis_label_fontsize),
-                    tickfont=dict(size=actual_tick_fontsize)
+                    title_font=dict(size=st.session_state.axis_label_fontsize),
+                    tickfont=dict(size=st.session_state.tick_fontsize)
                 )
                 
                 # Apply axis boundaries
@@ -1628,16 +1611,20 @@ with tab2:
                     fig_plotly.update_yaxes(range=[auto_y_min, auto_y_max], row=1, col=1)
                     fig_plotly.update_yaxes(range=[auto_y_min, auto_y_max], row=1, col=2)
                 
+                # Add plot title
+                plot_title_text = st.session_state.plot_title if st.session_state.plot_title else "Interactive Data Visualization"
+                
                 fig_plotly.update_layout(
                     height=800,
-                    title_text="Interactive Data Visualization",
-                    title_font=dict(size=actual_axis_label_fontsize * 1.2),
+                    title_text=plot_title_text,
+                    title_font=dict(size=st.session_state.axis_label_fontsize * 1.2),
                     showlegend=True,
                     hovermode='closest',
                     plot_bgcolor=st.session_state.graph_settings['background_color'],
                     legend=dict(
-                        font=dict(size=actual_legend_fontsize),
-                        title_font=dict(size=actual_legend_fontsize)
+                        title_text=st.session_state.legend_title,
+                        font=dict(size=st.session_state.legend_fontsize),
+                        title_font=dict(size=st.session_state.legend_fontsize)
                     )
                 )
                 
@@ -1700,6 +1687,8 @@ with tab3:
                 st.session_state.datasets,
                 st.session_state.x_axis_label,
                 st.session_state.y_axis_label,
+                st.session_state.plot_title,
+                st.session_state.legend_title,
                 st.session_state.x_manual,
                 st.session_state.y_manual,
                 st.session_state.x_min,
@@ -1709,14 +1698,11 @@ with tab3:
                 st.session_state.y_max,
                 st.session_state.y_step,
                 st.session_state.marker_size,
-                st.session_state.marker_scale,
                 st.session_state.legend_fontsize,
-                st.session_state.legend_scale,
                 st.session_state.axis_label_fontsize,
-                st.session_state.axis_label_scale,
                 st.session_state.tick_fontsize,
-                st.session_state.tick_scale,
-                st.session_state.graph_settings
+                st.session_state.graph_settings,
+                st.session_state.normalize_density
             )
             
             st.download_button(
@@ -1733,11 +1719,16 @@ with tab3:
                 if len(all_data_with_settings) > 2000:
                     st.info(f"And {len(all_data_with_settings) - 2000} more characters...")
         
-        # Axis settings
-        st.subheader("Axis Settings")
-        col1, col2 = st.columns(2)
+        # Title and label settings
+        st.subheader("Title and Label Settings")
         
+        col1, col2 = st.columns(2)
         with col1:
+            if st.session_state.plot_title:
+                st.info(f"**Plot Title:** {st.session_state.plot_title}")
+            else:
+                st.info("**Plot Title:** Not set")
+            
             st.info(f"**X Axis:** {format_axis_label(st.session_state.x_axis_label)}")
             if st.session_state.x_manual:
                 st.write(f"Manual configuration: ON")
@@ -1750,6 +1741,8 @@ with tab3:
                 st.write(f"Auto-detection: from {auto_limits['x_min']:.3f} to {auto_limits['x_max']:.3f}")
         
         with col2:
+            st.info(f"**Legend Title:** {st.session_state.legend_title}")
+            
             st.info(f"**Y Axis:** {format_axis_label(st.session_state.y_axis_label)}")
             if st.session_state.y_manual:
                 st.write(f"Manual configuration: ON")
@@ -1761,31 +1754,30 @@ with tab3:
                 auto_limits = auto_detect_axis_limits(st.session_state.datasets)
                 st.write(f"Auto-detection: from {auto_limits['y_min']:.3f} to {auto_limits['y_max']:.3f}")
         
-        # Display and scaling settings
-        st.subheader("Display and Scaling Settings")
-        
-        # Calculate actual sizes
-        actual_marker_size = st.session_state.marker_size * st.session_state.marker_scale
-        actual_legend_fontsize = st.session_state.legend_fontsize * st.session_state.legend_scale
-        actual_axis_label_fontsize = st.session_state.axis_label_fontsize * st.session_state.axis_label_scale
-        actual_tick_fontsize = st.session_state.tick_fontsize * st.session_state.tick_scale
+        # Display settings
+        st.subheader("Display Settings")
         
         col1, col2 = st.columns(2)
         with col1:
-            st.info(f"**Marker Size:** {st.session_state.marker_size} × {st.session_state.marker_scale:.1f} = **{actual_marker_size:.0f}**")
-            st.info(f"**Legend Font Size:** {st.session_state.legend_fontsize} × {st.session_state.legend_scale:.1f} = **{actual_legend_fontsize:.1f}**")
+            st.info(f"**Marker Size:** {st.session_state.marker_size}")
+            st.info(f"**Legend Font Size:** {st.session_state.legend_fontsize}")
         
         with col2:
-            st.info(f"**Axis Label Size:** {st.session_state.axis_label_fontsize} × {st.session_state.axis_label_scale:.1f} = **{actual_axis_label_fontsize:.1f}**")
-            st.info(f"**Tick Label Size:** {st.session_state.tick_fontsize} × {st.session_state.tick_scale:.1f} = **{actual_tick_fontsize:.1f}**")
+            st.info(f"**Axis Label Font Size:** {st.session_state.axis_label_fontsize}")
+            st.info(f"**Tick Label Font Size:** {st.session_state.tick_fontsize}")
         
         # Difference between axis labels and tick labels
-        size_difference = actual_axis_label_fontsize - actual_tick_fontsize
-        st.info(f"**Size Difference (Labels - Ticks):** {size_difference:.1f} points")
-        if size_difference >= 2.0:
-            st.success(f"✓ Labels are at least 2 points larger than ticks (difference: {size_difference:.1f} points)")
+        size_difference = st.session_state.axis_label_fontsize - st.session_state.tick_fontsize
+        st.info(f"**Size Difference (Labels - Ticks):** {size_difference} points")
+        if size_difference >= 2:
+            st.success(f"✓ Labels are at least 2 points larger than ticks (difference: {size_difference} points)")
         else:
-            st.warning(f"⚠ Labels are only {size_difference:.1f} points larger than ticks. Consider increasing the difference to at least 2 points.")
+            st.warning(f"⚠ Labels are only {size_difference} points larger than ticks. Consider increasing the difference to at least 2 points.")
+        
+        # Marginal distributions setting
+        st.subheader("Marginal Distributions Setting")
+        density_status = "NORMALIZED to [0,1]" if st.session_state.normalize_density else "ACTUAL DENSITY VALUES"
+        st.info(f"**Marginal Distributions:** {density_status}")
         
         # Graph settings
         st.subheader("Graph Settings")
@@ -1842,10 +1834,10 @@ st.markdown("---")
 st.markdown("### Usage Instructions:")
 st.markdown("""
 1. **Sidebar**: 
-   - Configure marker size and scaling in "Display Settings" (Base size × Scale factor)
-   - Configure legend font size and scaling
-   - Configure axis label sizes (Base size × Scale factor for both labels and ticks)
-   - System automatically ensures labels are larger than ticks by the specified scale factor
+   - Configure plot title, axis labels, and legend title in "Title and Label Settings"
+   - Choose whether to normalize marginal distributions in "Marginal Distributions"
+   - Configure marker size in "Display Settings"
+   - Configure font sizes for legend, axis labels, and tick labels
    - Click "➕ Add New Dataset" to create datasets
    - Set axis labels
    - System automatically selects axis boundaries based on data
@@ -1856,16 +1848,14 @@ st.markdown("""
    - Load previously exported data with settings (optional)
    - Click "Apply Loaded Data" button to use imported settings
 2. **'Data' tab**: Enter X and Y values separated by tabs for each dataset. System shows auto-detected boundaries.
-3. **'Plots' tab**: Click "Create Plots" button for visualization. All scaling settings are applied.
+3. **'Plots' tab**: Click "Create Plots" button for visualization. All settings are applied.
 4. **'Statistics' tab**: 
-   - View data statistics and scaling settings
-   - See the actual computed sizes (base × scale)
+   - View data statistics and settings
    - Check if labels are at least 2 points larger than ticks
    - Export statistics separately
    - Export ALL data with settings for subsequent loading
 
-**Important**: The "Download ALL Data with Settings" file contains all parameters including all scaling factors and can be loaded back via the sidebar.
+**Important**: The "Download ALL Data with Settings" file contains all parameters and can be loaded back via the sidebar.
 
-**Scaling Note**: The system automatically ensures axis labels are larger than tick labels by the specified scale factor (default 1.2×). 
-Adjust the "Label Scale Factor" to increase or decrease this difference. The default ensures labels are about 2 points larger than ticks.
+**Marginal Distributions**: You can choose between normalized (scaled to [0,1]) and actual density values for marginal distributions. Normalized is useful for comparing shapes, while actual density shows real probability density values.
 """)
