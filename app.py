@@ -695,7 +695,6 @@ def auto_detect_axis_limits(datasets):
         'y_max': round(y_max_auto, 3),
         'y_step': round(y_step_auto, 3)
     }
-}
 
 # Function to reset all settings
 def reset_all_settings():
@@ -1859,3 +1858,4 @@ st.markdown("""
 
 **Marginal Distributions**: You can choose between normalized (scaled to [0,1]) and actual density values for marginal distributions. Normalized is useful for comparing shapes, while actual density shows real probability density values.
 """)
+
