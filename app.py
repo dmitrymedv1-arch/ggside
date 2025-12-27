@@ -1858,7 +1858,8 @@ st.markdown("""
 
 **Marginal Distributions**: You can choose between normalized (scaled to [0,1]) and actual density values for marginal distributions. Normalized is useful for comparing shapes, while actual density shows real probability density values.
 
-**developed by @daM, @CTA, https://chimicatechnoacta.ru**.
+**developed by @daM, @CTA, https://chimicatechnoacta.ru **.
 """)
+
 
 
