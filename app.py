@@ -183,20 +183,25 @@ def format_data_for_display(data_text):
     
     return '\n'.join(formatted_lines)
 
-
-# Function to detect the most likely separator used in the data
+# Improved function to detect the most likely separator used in the data
 def detect_separator(text):
     """Detects the most likely separator used in the data"""
     lines = text.strip().split('\n')
     
+    if not lines:
+        return '\t'  # Default
+    
     # Count occurrences of each separator in non-empty lines
     separator_counts = {'\t': 0, ';': 0, ',': 0}
     space_as_separator = 0
+    total_valid_lines = 0
     
-    for line in lines[:10]:  # Check first 10 lines
+    for line in lines[:20]:  # Check first 20 lines
         line = line.strip()
         if not line or line.startswith('#'):
             continue
+        
+        total_valid_lines += 1
         
         # Check for tab
         if '\t' in line:
@@ -206,19 +211,43 @@ def detect_separator(text):
         if ';' in line:
             separator_counts[';'] += 1
         
-        # Check for comma
+        # Check for comma (but be careful with decimal commas)
+        # Count comma only if it's likely a separator (not a decimal)
         if ',' in line:
-            separator_counts[','] += 1
+            # Check if comma is likely a separator (not part of a number)
+            # Simple heuristic: if there's a digit before and after comma with space or other separator
+            parts_by_comma = line.split(',')
+            if len(parts_by_comma) >= 2:
+                # Check if it could be a decimal comma
+                is_decimal = False
+                for i in range(len(parts_by_comma) - 1):
+                    left = parts_by_comma[i].strip()
+                    right = parts_by_comma[i+1].strip()
+                    if left and right:
+                        # Check if left ends with digit and right starts with digit (could be decimal)
+                        if left[-1:].isdigit() and right[:1].isdigit():
+                            # Check if there are 1-3 digits after comma
+                            if len(right) <= 3 and right.isdigit():
+                                is_decimal = True
+                                break
+                
+                if not is_decimal:
+                    separator_counts[','] += 1
         
-        # Check if space is likely separator (has at least 2 numbers separated by spaces)
-        parts = line.split()
-        if len(parts) >= 2:
+        # Check if space is likely separator
+        parts_by_space = line.split()
+        if len(parts_by_space) >= 2:
             try:
-                float(parts[0].replace(',', '.'))
-                float(parts[1].replace(',', '.'))
+                # Try to parse as numbers
+                float(parts_by_space[0].replace(',', '.'))
+                float(parts_by_space[1].replace(',', '.'))
                 space_as_separator += 1
             except:
                 pass
+    
+    # If no valid lines, return default
+    if total_valid_lines == 0:
+        return '\t'
     
     # Determine which separator is most common
     max_count = 0
@@ -229,9 +258,28 @@ def detect_separator(text):
             max_count = count
             likely_separator = sep
     
-    # Check if space is more common
-    if space_as_separator > max_count:
+    # Check if space is more common (only if at least 30% of lines use it)
+    if space_as_separator > max_count and space_as_separator > total_valid_lines * 0.3:
         likely_separator = ' '
+    
+    # If we can't determine, check each line individually
+    if max_count == 0 and space_as_separator == 0:
+        # Try to find any separator in the first valid line
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                if '\t' in line:
+                    return '\t'
+                elif ';' in line:
+                    return ';'
+                elif ',' in line:
+                    # Check if comma is separator or decimal
+                    if ',' in line and ('.' not in line or line.count(',') > 1):
+                        return ','
+                elif ' ' in line:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        return ' '
     
     return likely_separator
 
@@ -1577,7 +1625,7 @@ with tab1:
     
     # Instructions with examples
     st.markdown("""
-    **Enter data in any of these formats:**
+    **Enter data in any of these formats (automatic detection):**
     - **Tab-separated:** `X_value<tab>Y_value` (Example: `0.1\t-5.5`)
     - **Space-separated:** `X_value Y_value` (Example: `0.1 -5.5`)
     - **Comma-separated:** `X_value,Y_value` (Example: `0.1,-5.5`)
@@ -1588,26 +1636,8 @@ with tab1:
     - Scientific notation is supported (e.g., `1.23e-4`)
     - Comment lines starting with `#` are ignored
     - Empty lines are ignored
+    - System automatically detects the separator format
     """)
-    
-    # Format selector for new data entry
-    st.subheader("Data Entry Format")
-    entry_format = st.radio(
-        "Select format for new data entry:",
-        options=["Tab (\\t)", "Space", "Comma (,)", "Semicolon (;)"],
-        horizontal=True,
-        index=0,
-        key="entry_format_radio"
-    )
-    
-    # Map format to separator
-    format_map = {
-        "Tab (\\t)": "\t",
-        "Space": " ",
-        "Comma (,)": ",",
-        "Semicolon (;)": ";"
-    }
-    current_separator = format_map[entry_format]
     
     # Show current automatic boundaries
     auto_limits_tab1 = auto_detect_axis_limits(st.session_state.datasets)
@@ -1631,17 +1661,63 @@ with tab1:
                     )
                     st.session_state.datasets[i]['name'] = new_name
                     
-                    # Format data for display based on selected format
-                    data_for_display = dataset['data']
+                    # Detect and show the separator
+                    separator_info = ""
+                    if dataset['data'].strip():
+                        detected_sep = detect_separator(dataset['data'])
+                        sep_names = {
+                            '\t': 'Tab (\\t)',
+                            ' ': 'Space',
+                            ',': 'Comma (,)',
+                            ';': 'Semicolon (;)'
+                        }
+                        separator_name = sep_names.get(detected_sep, 'Auto-detected')
+                        separator_info = f"Detected: **{separator_name}**"
                     
                     data_text = st.text_area(
-                        f"Data (X{current_separator}Y)",
-                        value=data_for_display,
+                        "Data (X Y - any format)",
+                        value=dataset['data'],
                         height=200,
                         key=f"data_{i}",
-                        help=f"Enter data with '{current_separator}' as separator"
+                        help=f"Enter data in any format. {separator_info}"
                     )
                     st.session_state.datasets[i]['data'] = data_text
+                    
+                    # Show detected separator after text area
+                    if data_text.strip():
+                        detected_sep = detect_separator(data_text)
+                        sep_names = {
+                            '\t': 'Tab (\\t)',
+                            ' ': 'Space',
+                            ',': 'Comma (,)',
+                            ';': 'Semicolon (;)'
+                        }
+                        separator_name = sep_names.get(detected_sep, 'Mixed/Unknown')
+                        
+                        col_info1, col_info2 = st.columns([1, 3])
+                        with col_info1:
+                            st.info(f"**Format:** {separator_name}")
+                        with col_info2:
+                            # Auto-format button
+                            if st.button("🔄 Auto-format data", key=f"auto_format_{i}"):
+                                lines = data_text.strip().split('\n')
+                                formatted_lines = []
+                                for line in lines:
+                                    line = line.strip()
+                                    if not line or line.startswith('#'):
+                                        formatted_lines.append(line)
+                                        continue
+                                    
+                                    # Parse and reformat with detected separator
+                                    parsed = parse_data(line, "temp")
+                                    if not parsed.empty:
+                                        # Use detected separator for formatting
+                                        formatted_lines.append(f"{parsed['x'].iloc[0]}{detected_sep}{parsed['y'].iloc[0]}")
+                                    else:
+                                        formatted_lines.append(line)
+                                
+                                st.session_state.datasets[i]['data'] = '\n'.join(formatted_lines)
+                                st.rerun()
                 
                 with col2:
                     color = st.color_picker(
@@ -1674,102 +1750,107 @@ with tab1:
                         all_data_frames.append(df)
                         
                         # Data preview
-                        st.markdown(f"**Preview ({len(df)} points):**")
+                        st.markdown(f"**Data Preview ({len(df)} points):**")
                         
-                        col_preview1, col_preview2 = st.columns([2, 1])
+                        col_preview1, col_preview2 = st.columns([3, 1])
                         with col_preview1:
                             st.dataframe(df[['x', 'y']].head(10), use_container_width=True)
                         
                         with col_preview2:
-                            # Show detected separator info
-                            detected_sep = detect_separator(data_text)
-                            sep_names = {
-                                '\t': 'Tab',
-                                ' ': 'Space',
-                                ',': 'Comma',
-                                ';': 'Semicolon'
-                            }
-                            st.info(f"Detected separator: **{sep_names.get(detected_sep, 'Unknown')}**")
-                            
-                            # Show statistics
-                            st.info(f"Valid points: **{len(df)}**")
-                            
-                            # Quick format converter button
-                            if st.button(f"🔧 Format as {entry_format}", key=f"format_btn_{i}"):
-                                # Convert data to selected format
-                                lines = data_text.strip().split('\n')
-                                formatted_lines = []
-                                for line in lines:
-                                    line = line.strip()
-                                    if not line or line.startswith('#'):
-                                        formatted_lines.append(line)
-                                        continue
-                                    
-                                    # Parse and reformat
-                                    parsed = parse_data(line, "temp")
-                                    if not parsed.empty:
-                                        formatted_lines.append(f"{parsed['x'].iloc[0]}{current_separator}{parsed['y'].iloc[0]}")
-                                    else:
-                                        formatted_lines.append(line)
-                                
-                                st.session_state.datasets[i]['data'] = '\n'.join(formatted_lines)
-                                st.rerun()
+                            # Show basic statistics
+                            st.metric("Points", len(df))
+                            if len(df) > 0:
+                                st.metric("X range", f"{df['x'].min():.2f}-{df['x'].max():.2f}")
+                                st.metric("Y range", f"{df['y'].min():.2f}-{df['y'].max():.2f}")
         
-        # Quick data entry helpers
-        st.subheader("Quick Data Entry")
+        # Quick data entry section with examples
+        st.subheader("Quick Data Examples")
         
-        col_help1, col_help2, col_help3 = st.columns(3)
+        st.markdown("""
+        **Click to insert example data into the last dataset:**
+        """)
         
-        with col_help1:
-            if st.button("📋 Paste Example Data (Linear)"):
-                example_data = """1.2\t5.1
-2.1\t7.3
-3.4\t9.8
-4.0\t11.2
-5.1\t13.4"""
-                # Convert to current separator
-                lines = example_data.split('\n')
-                formatted = []
-                for line in lines:
-                    if '\t' in line:
-                        x, y = line.split('\t')
-                        formatted.append(f"{x}{current_separator}{y}")
-                st.session_state.datasets[-1]['data'] = '\n'.join(formatted) if st.session_state.datasets else ""
-                st.rerun()
+        col_ex1, col_ex2, col_ex3 = st.columns(3)
         
-        with col_help2:
-            if st.button("📋 Paste Example Data (Two Groups)"):
-                example_data = """4.2\t8.1
-4.8\t9.3
-5.1\t9.8
-14.8\t24.3
-15.2\t25.1"""
-                # Convert to current separator
-                lines = example_data.split('\n')
-                formatted = []
-                for line in lines:
-                    if '\t' in line:
-                        x, y = line.split('\t')
-                        formatted.append(f"{x}{current_separator}{y}")
-                st.session_state.datasets[-1]['data'] = '\n'.join(formatted) if st.session_state.datasets else ""
-                st.rerun()
+        with col_ex1:
+            if st.button("📋 Linear Data Example", use_container_width=True):
+                if st.session_state.datasets:
+                    example_data = """1.2 5.1
+2.1 7.3
+3.4 9.8
+4.0 11.2
+5.1 13.4
+6.2 15.1
+7.0 17.2
+8.3 19.6
+9.1 21.3
+10.0 23.0"""
+                    st.session_state.datasets[-1]['data'] = example_data
+                    st.rerun()
+                else:
+                    st.warning("Add a dataset first!")
         
-        with col_help3:
-            if st.button("📋 Paste Example Data (Random)"):
-                example_data = """7.2\t18.3
-8.1\t22.4
-9.3\t16.8
-10.5\t24.1
-11.8\t19.7"""
-                # Convert to current separator
-                lines = example_data.split('\n')
-                formatted = []
-                for line in lines:
-                    if '\t' in line:
-                        x, y = line.split('\t')
-                        formatted.append(f"{x}{current_separator}{y}")
-                st.session_state.datasets[-1]['data'] = '\n'.join(formatted) if st.session_state.datasets else ""
-                st.rerun()
+        with col_ex2:
+            if st.button("📋 Two Groups Example", use_container_width=True):
+                if st.session_state.datasets:
+                    example_data = """4.2 8.1
+4.8 9.3
+5.1 9.8
+5.3 10.2
+5.7 11.1
+4.9 9.6
+14.8 24.3
+15.2 25.1
+15.7 26.2
+14.3 23.8"""
+                    st.session_state.datasets[-1]['data'] = example_data
+                    st.rerun()
+                else:
+                    st.warning("Add a dataset first!")
+        
+        with col_ex3:
+            if st.button("📋 Random Data Example", use_container_width=True):
+                if st.session_state.datasets:
+                    example_data = """7.2 18.3
+8.1 22.4
+9.3 16.8
+10.5 24.1
+11.8 19.7
+12.2 25.3
+6.8 17.2
+13.4 21.8
+8.7 23.6
+10.0 20.0"""
+                    st.session_state.datasets[-1]['data'] = example_data
+                    st.rerun()
+                else:
+                    st.warning("Add a dataset first!")
+        
+        # Format examples in different styles
+        st.markdown("""
+        **Different format examples (all work automatically):**
+        ```
+        # Tab-separated
+        1.2\t5.1
+        2.1\t7.3
+        
+        # Space-separated  
+        1.2 5.1
+        2.1 7.3
+        
+        # Comma-separated
+        1.2,5.1
+        2.1,7.3
+        
+        # Semicolon-separated
+        1.2;5.1
+        2.1;7.3
+        
+        # Mixed decimal separators
+        1,2 5.1    # comma as decimal, space as separator
+        2.1;3,5   # dot and comma decimals, semicolon separator
+        ```
+        """)
         
         # Collect all data
         if all_data_frames:
@@ -2305,4 +2386,5 @@ st.markdown("""
 
 **developed by @daM, @CTA, https://chimicatechnoacta.ru **.
 """)
+
 
