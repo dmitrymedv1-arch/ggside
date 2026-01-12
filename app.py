@@ -10,6 +10,8 @@ import math
 import io
 import json
 import base64
+import warnings
+warnings.filterwarnings('ignore')
 
 # Page configuration
 st.set_page_config(
@@ -163,6 +165,328 @@ def set_custom_axes(ax, border_color='black', border_width=2.5, grid_color='ligh
     
     return ax
 
+# Function for automatic axis limits detection
+def auto_detect_axis_limits(datasets):
+    """Automatically detects minimum and maximum values for X and Y axes"""
+    x_min = None
+    x_max = None
+    y_min = None
+    y_max = None
+    
+    for dataset in datasets:
+        if dataset['active'] and dataset['data'].strip():
+            df = parse_data(dataset['data'], dataset['name'])
+            if not df.empty:
+                if x_min is None or df['x'].min() < x_min:
+                    x_min = df['x'].min()
+                if x_max is None or df['x'].max() > x_max:
+                    x_max = df['x'].max()
+                if y_min is None or df['y'].min() < y_min:
+                    y_min = df['y'].min()
+                if y_max is None or df['y'].max() > y_max:
+                    y_max = df['y'].max()
+    
+    # Add small margin at edges (10%)
+    if x_min is not None and x_max is not None and x_min != x_max:
+        x_range = x_max - x_min
+        x_min_auto = x_min - 0.1 * x_range
+        x_max_auto = x_max + 0.1 * x_range
+    elif x_min is not None and x_max is not None:
+        x_min_auto = x_min - 0.1
+        x_max_auto = x_max + 0.1
+    else:
+        x_min_auto = 0
+        x_max_auto = 1
+    
+    if y_min is not None and y_max is not None and y_min != y_max:
+        y_range = y_max - y_min
+        y_min_auto = y_min - 0.1 * y_range
+        y_max_auto = y_max + 0.1 * y_range
+    elif y_min is not None and y_max is not None:
+        y_min_auto = y_min - 0.1
+        y_max_auto = y_max + 0.1
+    else:
+        y_min_auto = 0
+        y_max_auto = 1
+    
+    # Calculate step (about 10 divisions)
+    x_step_auto = max((x_max_auto - x_min_auto) / 10, 0.1)
+    y_step_auto = max((y_max_auto - y_min_auto) / 10, 0.1)
+    
+    return {
+        'x_min': round(x_min_auto, 3),
+        'x_max': round(x_max_auto, 3),
+        'x_step': round(x_step_auto, 3),
+        'y_min': round(y_min_auto, 3),
+        'y_max': round(y_max_auto, 3),
+        'y_step': round(y_step_auto, 3)
+    }
+
+# Function to create marginal plots with different types
+def create_marginal_plot(datasets, x_label, y_label, plot_title, legend_title,
+                        x_min_val, x_max_val, y_min_val, y_max_val,
+                        normalize_density, graph_settings, 
+                        marginal_type='density',  # 'density', 'histogram', 'boxplot', 'violin'
+                        marker_size=50, legend_fontsize=10,
+                        axis_label_fontsize=12, tick_fontsize=10,
+                        show_legend=True):
+    """
+    Creates a scatter plot with marginal distributions of specified type
+    """
+    # Create figure with gridspec
+    fig = plt.figure(figsize=(12, 10))
+    gs = plt.GridSpec(4, 4, figure=fig, hspace=0.3, wspace=0.3)
+    
+    # Create axes
+    ax_main = fig.add_subplot(gs[1:4, 0:3])
+    ax_top = fig.add_subplot(gs[0, 0:3], sharex=ax_main)
+    ax_right = fig.add_subplot(gs[1:4, 3], sharey=ax_main)
+    
+    # Apply custom axes settings
+    set_custom_axes(ax_top, 
+                   border_color=graph_settings['border_color'], 
+                   border_width=graph_settings['border_width'],
+                   grid_color=graph_settings['grid_color'],
+                   grid_visible=graph_settings['grid_visible'],
+                   background_color=graph_settings['background_color'],
+                   tick_fontsize=tick_fontsize,
+                   label_fontsize=axis_label_fontsize)
+    
+    set_custom_axes(ax_main, 
+                   border_color=graph_settings['border_color'], 
+                   border_width=graph_settings['border_width'],
+                   grid_color=graph_settings['grid_color'],
+                   grid_visible=graph_settings['grid_visible'],
+                   background_color=graph_settings['background_color'],
+                   tick_fontsize=tick_fontsize,
+                   label_fontsize=axis_label_fontsize)
+    
+    set_custom_axes(ax_right, 
+                   border_color=graph_settings['border_color'], 
+                   border_width=graph_settings['border_width'],
+                   grid_color=graph_settings['grid_color'],
+                   grid_visible=graph_settings['grid_visible'],
+                   background_color=graph_settings['background_color'],
+                   tick_fontsize=tick_fontsize,
+                   label_fontsize=axis_label_fontsize)
+    
+    # Hide x-axis labels for top plot and y-axis labels for right plot
+    plt.setp(ax_top.get_xticklabels(), visible=False)
+    plt.setp(ax_right.get_yticklabels(), visible=False)
+    
+    # Collect all data for plotting
+    all_data = []
+    for i, dataset in enumerate(datasets):
+        if dataset['active']:
+            df = parse_data(dataset['data'], dataset['name'])
+            if not df.empty:
+                # Add scatter points to main plot
+                ax_main.scatter(
+                    df['x'], df['y'],
+                    color=dataset['color'],
+                    label=dataset['name'],
+                    marker=matplotlib_markers[dataset['marker']],
+                    s=marker_size,
+                    alpha=0.7
+                )
+                all_data.append((df, dataset))
+    
+    # Set main plot labels
+    ax_main.set_xlabel(format_axis_label(x_label), fontsize=axis_label_fontsize)
+    ax_main.set_ylabel(format_axis_label(y_label), fontsize=axis_label_fontsize)
+    
+    # Set axis limits
+    ax_main.set_xlim(x_min_val, x_max_val)
+    ax_main.set_ylim(y_min_val, y_max_val)
+    ax_top.set_xlim(x_min_val, x_max_val)
+    ax_right.set_ylim(y_min_val, y_max_val)
+    
+    # Add legend if requested
+    if show_legend and len(datasets) > 0:
+        ax_main.legend(title=legend_title, fontsize=legend_fontsize, 
+                      title_fontsize=legend_fontsize, loc='upper right')
+    
+    # Create marginal plots based on type
+    if marginal_type == 'density':
+        # Density plots
+        max_x_density = 0
+        max_y_density = 0
+        
+        for df, dataset in all_data:
+            color = dataset['color']
+            
+            # X density (top plot)
+            if len(df) > 1:
+                x_vals, density = estimate_density(df['x'].values, normalize=normalize_density)
+                if x_vals is not None and density is not None:
+                    if not normalize_density and density.max() > max_x_density:
+                        max_x_density = density.max()
+                    ax_top.fill_between(x_vals, 0, density, color=color, alpha=0.3)
+                    ax_top.plot(x_vals, density, color=color, linewidth=1.5)
+            
+            # Y density (right plot)
+            if len(df) > 1:
+                y_vals, density = estimate_density(df['y'].values, normalize=normalize_density)
+                if y_vals is not None and density is not None:
+                    if not normalize_density and density.max() > max_y_density:
+                        max_y_density = density.max()
+                    ax_right.fill_betweenx(y_vals, 0, density, color=color, alpha=0.3)
+                    ax_right.plot(density, y_vals, color=color, linewidth=1.5)
+        
+        # Set density plot limits
+        if normalize_density:
+            ax_top.set_ylim(0, 1.1)
+            ax_right.set_xlim(0, 1.1)
+        else:
+            ax_top.set_ylim(0, max_x_density * 1.1 if max_x_density > 0 else 1.1)
+            ax_right.set_xlim(0, max_y_density * 1.1 if max_y_density > 0 else 1.1)
+        
+        ax_top.set_ylabel('Density' if not normalize_density else 'Norm. Density', 
+                         fontsize=axis_label_fontsize)
+        ax_right.set_xlabel('Density' if not normalize_density else 'Norm. Density', 
+                           fontsize=axis_label_fontsize)
+    
+    elif marginal_type == 'histogram':
+        # Histogram plots
+        bin_width_x = (x_max_val - x_min_val) / 20
+        bin_width_y = (y_max_val - y_min_val) / 20
+        
+        for df, dataset in all_data:
+            color = dataset['color']
+            
+            # X histogram (top plot)
+            if len(df) > 0:
+                ax_top.hist(df['x'], bins=np.arange(x_min_val, x_max_val + bin_width_x, bin_width_x),
+                           color=color, alpha=0.5, density=True, edgecolor='black', linewidth=0.5)
+            
+            # Y histogram (right plot)
+            if len(df) > 0:
+                ax_right.hist(df['y'], bins=np.arange(y_min_val, y_max_val + bin_width_y, bin_width_y),
+                            color=color, alpha=0.5, density=True, edgecolor='black', linewidth=0.5,
+                            orientation='horizontal')
+        
+        ax_top.set_ylabel('Density', fontsize=axis_label_fontsize)
+        ax_right.set_xlabel('Density', fontsize=axis_label_fontsize)
+        
+        # Adjust limits
+        y_top_lim = ax_top.get_ylim()[1]
+        ax_top.set_ylim(0, y_top_lim * 1.1)
+        x_right_lim = ax_right.get_xlim()[1]
+        ax_right.set_xlim(0, x_right_lim * 1.1)
+    
+    elif marginal_type == 'boxplot':
+        # Boxplot plots
+        x_data = []
+        y_data = []
+        colors = []
+        labels = []
+        
+        for df, dataset in all_data:
+            if len(df) > 0:
+                x_data.append(df['x'].values)
+                y_data.append(df['y'].values)
+                colors.append(dataset['color'])
+                labels.append(dataset['name'])
+        
+        if x_data:
+            # X boxplot (top plot) - horizontal
+            bp_x = ax_top.boxplot(x_data, vert=False, patch_artist=True, 
+                                 labels=labels if len(labels) <= 5 else None)
+            # Color the boxes
+            for patch, color in zip(bp_x['boxes'], colors):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.5)
+            
+            # Customize boxplot appearance
+            for element in ['whiskers', 'caps', 'medians']:
+                for line in bp_x[element]:
+                    line.set_color('black')
+                    line.set_linewidth(1)
+        
+        if y_data:
+            # Y boxplot (right plot) - vertical
+            bp_y = ax_right.boxplot(y_data, vert=True, patch_artist=True,
+                                   labels=labels if len(labels) <= 5 else None)
+            # Color the boxes
+            for patch, color in zip(bp_y['boxes'], colors):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.5)
+            
+            # Customize boxplot appearance
+            for element in ['whiskers', 'caps', 'medians']:
+                for line in bp_y[element]:
+                    line.set_color('black')
+                    line.set_linewidth(1)
+        
+        ax_top.set_ylabel('Value', fontsize=axis_label_fontsize)
+        ax_right.set_xlabel('Value', fontsize=axis_label_fontsize)
+        
+        # Hide labels if too many datasets
+        if len(labels) > 5:
+            ax_top.set_yticklabels([])
+            ax_right.set_xticklabels([])
+    
+    elif marginal_type == 'violin':
+        # Violin plots
+        x_data = []
+        y_data = []
+        colors = []
+        labels = []
+        
+        for df, dataset in all_data:
+            if len(df) > 0:
+                x_data.append(df['x'].values)
+                y_data.append(df['y'].values)
+                colors.append(dataset['color'])
+                labels.append(dataset['name'])
+        
+        if x_data:
+            # X violin plot (top plot) - horizontal
+            vp_x = ax_top.violinplot(x_data, vert=False, showmeans=True, showmedians=True)
+            
+            # Color the violins
+            for i, (body, color) in enumerate(zip(vp_x['bodies'], colors)):
+                body.set_facecolor(color)
+                body.set_alpha(0.5)
+                body.set_edgecolor('black')
+            
+            # Customize appearance
+            vp_x['cmeans'].set_color('red')
+            vp_x['cmedians'].set_color('blue')
+            vp_x['cmins'].set_color('black')
+            vp_x['cmaxes'].set_color('black')
+            vp_x['cbars'].set_color('black')
+        
+        if y_data:
+            # Y violin plot (right plot) - vertical
+            vp_y = ax_right.violinplot(y_data, vert=True, showmeans=True, showmedians=True)
+            
+            # Color the violins
+            for i, (body, color) in enumerate(zip(vp_y['bodies'], colors)):
+                body.set_facecolor(color)
+                body.set_alpha(0.5)
+                body.set_edgecolor('black')
+            
+            # Customize appearance
+            vp_y['cmeans'].set_color('red')
+            vp_y['cmedians'].set_color('blue')
+            vp_y['cmins'].set_color('black')
+            vp_y['cmaxes'].set_color('black')
+            vp_y['cbars'].set_color('black')
+        
+        ax_top.set_ylabel('Value', fontsize=axis_label_fontsize)
+        ax_right.set_xlabel('Value', fontsize=axis_label_fontsize)
+    
+    # Set title
+    if plot_title:
+        fig.suptitle(f"{plot_title} - {marginal_type.capitalize()} Marginals", 
+                    fontsize=axis_label_fontsize * 1.2, fontweight='bold')
+    else:
+        fig.suptitle(f'Scatter Plot with {marginal_type.capitalize()} Marginals', 
+                    fontsize=axis_label_fontsize * 1.2, fontweight='bold')
+    
+    return fig
+
 # Function to export all data with settings
 def export_all_data_with_settings(datasets, x_label, y_label, plot_title, legend_title,
                                  x_manual, y_manual, x_min_val, x_max_val, x_step_val, 
@@ -175,7 +499,7 @@ def export_all_data_with_settings(datasets, x_label, y_label, plot_title, legend
     # Create export structure
     export_dict = {
         'metadata': {
-            'version': '1.3',
+            'version': '1.4',
             'x_axis_label': x_label,
             'y_axis_label': y_label,
             'plot_title': plot_title,
@@ -515,6 +839,10 @@ if 'legend_title' not in st.session_state:
 if 'normalize_density' not in st.session_state:
     st.session_state.normalize_density = True
 
+# Initialize marginal type state
+if 'marginal_type' not in st.session_state:
+    st.session_state.marginal_type = 'density'
+
 # Initialize axis settings state
 if 'x_manual' not in st.session_state:
     st.session_state.x_manual = False
@@ -639,63 +967,6 @@ plotly_markers = {
 # Default colors
 default_colors = ['#E41A1C', '#377EB8', '#4DAF4A', '#984EA3', '#FF7F00', '#FFFF33', '#A65628', '#F781BF', '#999999']
 
-# Function for automatic axis limits detection
-def auto_detect_axis_limits(datasets):
-    """Automatically detects minimum and maximum values for X and Y axes"""
-    x_min = None
-    x_max = None
-    y_min = None
-    y_max = None
-    
-    for dataset in datasets:
-        if dataset['active'] and dataset['data'].strip():
-            df = parse_data(dataset['data'], dataset['name'])
-            if not df.empty:
-                if x_min is None or df['x'].min() < x_min:
-                    x_min = df['x'].min()
-                if x_max is None or df['x'].max() > x_max:
-                    x_max = df['x'].max()
-                if y_min is None or df['y'].min() < y_min:
-                    y_min = df['y'].min()
-                if y_max is None or df['y'].max() > y_max:
-                    y_max = df['y'].max()
-    
-    # Add small margin at edges (10%)
-    if x_min is not None and x_max is not None and x_min != x_max:
-        x_range = x_max - x_min
-        x_min_auto = x_min - 0.1 * x_range
-        x_max_auto = x_max + 0.1 * x_range
-    elif x_min is not None and x_max is not None:
-        x_min_auto = x_min - 0.1
-        x_max_auto = x_max + 0.1
-    else:
-        x_min_auto = 0
-        x_max_auto = 1
-    
-    if y_min is not None and y_max is not None and y_min != y_max:
-        y_range = y_max - y_min
-        y_min_auto = y_min - 0.1 * y_range
-        y_max_auto = y_max + 0.1 * y_range
-    elif y_min is not None and y_max is not None:
-        y_min_auto = y_min - 0.1
-        y_max_auto = y_max + 0.1
-    else:
-        y_min_auto = 0
-        y_max_auto = 1
-    
-    # Calculate step (about 10 divisions)
-    x_step_auto = max((x_max_auto - x_min_auto) / 10, 0.1)
-    y_step_auto = max((y_max_auto - y_min_auto) / 10, 0.1)
-    
-    return {
-        'x_min': round(x_min_auto, 3),
-        'x_max': round(x_max_auto, 3),
-        'x_step': round(x_step_auto, 3),
-        'y_min': round(y_min_auto, 3),
-        'y_max': round(y_max_auto, 3),
-        'y_step': round(y_step_auto, 3)
-    }
-
 # Function to reset all settings
 def reset_all_settings():
     """Resets all settings to default values"""
@@ -704,6 +975,7 @@ def reset_all_settings():
     st.session_state.y_axis_label = 'Y Axis'
     st.session_state.plot_title = ''
     st.session_state.legend_title = 'Datasets'
+    st.session_state.marginal_type = 'density'
     st.session_state.x_manual = False
     st.session_state.y_manual = False
     st.session_state.x_min = None
@@ -783,12 +1055,27 @@ with st.sidebar:
     # 3. Marginal Distributions Settings
     st.subheader("Marginal Distributions")
     
-    st.session_state.normalize_density = st.checkbox(
-        "Normalize Marginal Distributions",
-        value=st.session_state.normalize_density,
-        help="When checked, marginal distributions are normalized to [0,1]. When unchecked, shows actual density values.",
-        key="normalize_density_checkbox"
+    # Type of marginal plot
+    marginal_type = st.selectbox(
+        "Type of Marginal Plot",
+        options=['density', 'histogram', 'boxplot', 'violin'],
+        index=['density', 'histogram', 'boxplot', 'violin'].index(st.session_state.marginal_type),
+        key="marginal_type_select",
+        help="Select the type of marginal distribution to display"
     )
+    st.session_state.marginal_type = marginal_type
+    
+    # Normalize option (only for density plots)
+    if marginal_type == 'density':
+        st.session_state.normalize_density = st.checkbox(
+            "Normalize Marginal Distributions",
+            value=st.session_state.normalize_density,
+            help="When checked, marginal distributions are normalized to [0,1]. When unchecked, shows actual density values.",
+            key="normalize_density_checkbox"
+        )
+    else:
+        # For non-density plots, normalization doesn't apply
+        st.info(f"Normalization only applies to density plots. For {marginal_type} plots, actual distributions are shown.")
     
     # 4. Axis Boundaries Management
     st.subheader("Axis Boundaries Management")
@@ -1167,8 +1454,7 @@ with tab2:
     with col2:
         st.info(f"🔤 Legend Font Size: **{st.session_state.legend_fontsize}**")
     with col3:
-        grid_status = "ON" if st.session_state.graph_settings['grid_visible'] else "OFF"
-        st.info(f"📐 Grid: **{grid_status}**")
+        st.info(f"📊 Marginal Type: **{st.session_state.marginal_type.upper()}**")
     
     # Show axis label settings
     col1, col2 = st.columns(2)
@@ -1182,8 +1468,9 @@ with tab2:
         st.info(f"📋 Plot Title: **{st.session_state.plot_title}**")
     
     # Show marginal distribution setting
-    density_status = "NORMALIZED" if st.session_state.normalize_density else "ACTUAL DENSITY"
-    st.info(f"📊 Marginal Distributions: **{density_status}**")
+    if st.session_state.marginal_type == 'density':
+        density_status = "NORMALIZED" if st.session_state.normalize_density else "ACTUAL DENSITY"
+        st.info(f"📊 Marginal Distributions: **{density_status}**")
     
     # Check if there is data for plotting
     has_data = False
@@ -1231,293 +1518,112 @@ with tab2:
                     auto_y_max = st.session_state.y_max
                     auto_y_step = st.session_state.y_step
                 
-                # Main plot with marginal distributions
-                st.subheader("Scatter Plot with Marginal Distributions")
+                # 1. Main plot with selected marginal type
+                st.subheader(f"Scatter Plot with {st.session_state.marginal_type.capitalize()} Marginal Distributions")
                 
-                # Create Matplotlib figure
-                fig, (ax_top, ax_main) = plt.subplots(
-                    2, 2, 
-                    figsize=(12, 10),
-                    gridspec_kw={'height_ratios': [1, 3], 'width_ratios': [3, 1]},
-                    constrained_layout=True
+                # Create the main marginal plot
+                fig_main = create_marginal_plot(
+                    datasets=st.session_state.datasets,
+                    x_label=st.session_state.x_axis_label,
+                    y_label=st.session_state.y_axis_label,
+                    plot_title=st.session_state.plot_title,
+                    legend_title=st.session_state.legend_title,
+                    x_min_val=auto_x_min,
+                    x_max_val=auto_x_max,
+                    y_min_val=auto_y_min,
+                    y_max_val=auto_y_max,
+                    normalize_density=st.session_state.normalize_density,
+                    graph_settings=st.session_state.graph_settings,
+                    marginal_type=st.session_state.marginal_type,
+                    marker_size=st.session_state.marker_size,
+                    legend_fontsize=st.session_state.legend_fontsize,
+                    axis_label_fontsize=st.session_state.axis_label_fontsize,
+                    tick_fontsize=st.session_state.tick_fontsize,
+                    show_legend=True
                 )
                 
-                # Remove extra axes
-                ax_right = ax_main[1]
-                ax_main = ax_main[0]
-                ax_top[1].axis('off')
-                ax_top = ax_top[0]
-
-                # Apply custom axes settings
-                set_custom_axes(ax_top, 
-                              border_color=st.session_state.graph_settings['border_color'], 
-                              border_width=st.session_state.graph_settings['border_width'],
-                              grid_color=st.session_state.graph_settings['grid_color'],
-                              grid_visible=st.session_state.graph_settings['grid_visible'],
-                              background_color=st.session_state.graph_settings['background_color'],
-                              tick_fontsize=st.session_state.tick_fontsize,
-                              label_fontsize=st.session_state.axis_label_fontsize,
-                              title_fontsize=st.session_state.axis_label_fontsize)
+                st.pyplot(fig_main)
                 
-                set_custom_axes(ax_main, 
-                              border_color=st.session_state.graph_settings['border_color'], 
-                              border_width=st.session_state.graph_settings['border_width'],
-                              grid_color=st.session_state.graph_settings['grid_color'],
-                              grid_visible=st.session_state.graph_settings['grid_visible'],
-                              background_color=st.session_state.graph_settings['background_color'],
-                              tick_fontsize=st.session_state.tick_fontsize,
-                              label_fontsize=st.session_state.axis_label_fontsize,
-                              title_fontsize=st.session_state.axis_label_fontsize)
+                # 2. Alternative plots - show all marginal types in a grid
+                st.subheader("Compare All Marginal Types")
                 
-                set_custom_axes(ax_right, 
-                              border_color=st.session_state.graph_settings['border_color'], 
-                              border_width=st.session_state.graph_settings['border_width'],
-                              grid_color=st.session_state.graph_settings['grid_color'],
-                              grid_visible=st.session_state.graph_settings['grid_visible'],
-                              background_color=st.session_state.graph_settings['background_color'],
-                              tick_fontsize=st.session_state.tick_fontsize,
-                              label_fontsize=st.session_state.axis_label_fontsize,
-                              title_fontsize=st.session_state.axis_label_fontsize)
-
-                # Draw points on main plot with marker size
-                for i, dataset in enumerate(st.session_state.datasets):
-                    if dataset['active']:
-                        df = parse_data(dataset['data'], dataset['name'])
-                        if not df.empty:
-                            ax_main.scatter(
-                                df['x'], df['y'],
-                                color=dataset['color'],
-                                label=dataset['name'],
-                                marker=matplotlib_markers[dataset['marker']],
-                                s=st.session_state.marker_size,
-                                alpha=0.7
-                            )
+                # Create a 2x2 grid of different marginal types
+                marginal_types = ['density', 'histogram', 'boxplot', 'violin']
                 
-                # Main plot settings with font sizes
-                ax_main.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=st.session_state.axis_label_fontsize)
-                ax_main.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=st.session_state.axis_label_fontsize)
-                if len(st.session_state.datasets) > 0:
-                    ax_main.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
-                                 title_fontsize=st.session_state.legend_fontsize)
-                if st.session_state.graph_settings['grid_visible']:
-                    ax_main.grid(True, alpha=0.3)
+                fig_grid, axes = plt.subplots(2, 2, figsize=(14, 12))
+                axes = axes.flatten()
                 
-                # Apply axis boundaries
-                if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
-                    ax_main.set_xlim(st.session_state.x_min, st.session_state.x_max)
-                    ax_top.set_xlim(st.session_state.x_min, st.session_state.x_max)
-                else:
-                    ax_main.set_xlim(auto_x_min, auto_x_max)
-                    ax_top.set_xlim(auto_x_min, auto_x_max)
+                for idx, mtype in enumerate(marginal_types):
+                    ax = axes[idx]
+                    
+                    # Create individual marginal plot
+                    fig_single = create_marginal_plot(
+                        datasets=st.session_state.datasets,
+                        x_label=st.session_state.x_axis_label,
+                        y_label=st.session_state.y_axis_label,
+                        plot_title="",
+                        legend_title="",
+                        x_min_val=auto_x_min,
+                        x_max_val=auto_x_max,
+                        y_min_val=auto_y_min,
+                        y_max_val=auto_y_max,
+                        normalize_density=st.session_state.normalize_density,
+                        graph_settings=st.session_state.graph_settings,
+                        marginal_type=mtype,
+                        marker_size=st.session_state.marker_size,
+                        legend_fontsize=st.session_state.legend_fontsize,
+                        axis_label_fontsize=st.session_state.axis_label_fontsize,
+                        tick_fontsize=st.session_state.tick_fontsize,
+                        show_legend=(idx == 0)  # Only show legend in first plot
+                    )
+                    
+                    # Extract just the main scatter plot from the figure
+                    if fig_single is not None:
+                        # We'll create a simple scatter plot for each type
+                        ax.clear()
+                        set_custom_axes(ax, 
+                                      border_color=st.session_state.graph_settings['border_color'], 
+                                      border_width=st.session_state.graph_settings['border_width'],
+                                      grid_color=st.session_state.graph_settings['grid_color'],
+                                      grid_visible=st.session_state.graph_settings['grid_visible'],
+                                      background_color=st.session_state.graph_settings['background_color'],
+                                      tick_fontsize=st.session_state.tick_fontsize,
+                                      label_fontsize=st.session_state.axis_label_fontsize)
+                        
+                        # Add scatter points
+                        for dataset in st.session_state.datasets:
+                            if dataset['active']:
+                                df = parse_data(dataset['data'], dataset['name'])
+                                if not df.empty:
+                                    ax.scatter(
+                                        df['x'], df['y'],
+                                        color=dataset['color'],
+                                        label=dataset['name'],
+                                        marker=matplotlib_markers[dataset['marker']],
+                                        s=st.session_state.marker_size/2,
+                                        alpha=0.7
+                                    )
+                        
+                        ax.set_xlim(auto_x_min, auto_x_max)
+                        ax.set_ylim(auto_y_min, auto_y_max)
+                        ax.set_title(f"{mtype.capitalize()} Marginals", fontsize=st.session_state.axis_label_fontsize * 1.1)
+                        
+                        if idx == 0:
+                            ax.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
+                                    title_fontsize=st.session_state.legend_fontsize, loc='upper right')
                 
-                if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
-                    ax_main.set_ylim(st.session_state.y_min, st.session_state.y_max)
-                    ax_right.set_ylim(st.session_state.y_min, st.session_state.y_max)
-                else:
-                    ax_main.set_ylim(auto_y_min, auto_y_max)
-                    ax_right.set_ylim(auto_y_min, auto_y_max)
-                
-                # Draw marginal distributions with improved density function
-                max_x_density = 0
-                max_y_density = 0
-                
-                for i, dataset in enumerate(st.session_state.datasets):
-                    if dataset['active']:
-                        df = parse_data(dataset['data'], dataset['name'])
-                        if not df.empty and len(df) > 1:
-                            color = dataset['color']
-                            
-                            # Distribution by X (top plot)
-                            x_vals, density = estimate_density(df['x'].values, normalize=st.session_state.normalize_density)
-                            if x_vals is not None and density is not None:
-                                if not st.session_state.normalize_density and density.max() > max_x_density:
-                                    max_x_density = density.max()
-                                ax_top.fill_between(x_vals, 0, density, color=color, alpha=0.3)
-                                ax_top.plot(x_vals, density, color=color, linewidth=1.5)
-                            
-                            # Distribution by Y (right plot)
-                            y_vals, density = estimate_density(df['y'].values, normalize=st.session_state.normalize_density)
-                            if y_vals is not None and density is not None:
-                                if not st.session_state.normalize_density and density.max() > max_y_density:
-                                    max_y_density = density.max()
-                                ax_right.fill_betweenx(y_vals, 0, density, color=color, alpha=0.3)
-                                ax_right.plot(density, y_vals, color=color, linewidth=1.5)
-                
-                # Marginal plot settings with font sizes
-                density_label = 'Normalized Density' if st.session_state.normalize_density else 'Density'
-                ax_top.set_ylabel(density_label, fontsize=st.session_state.axis_label_fontsize)
-                
-                if st.session_state.normalize_density:
-                    ax_top.set_ylim(0, 1.1)
-                else:
-                    ax_top.set_ylim(0, max_x_density * 1.1 if max_x_density > 0 else 1.1)
-                
-                ax_top.tick_params(axis='x', labelbottom=False)
-                if st.session_state.graph_settings['grid_visible']:
-                    ax_top.grid(True, alpha=0.3)
-                
-                ax_right.set_xlabel(density_label, fontsize=st.session_state.axis_label_fontsize)
-                
-                if st.session_state.normalize_density:
-                    ax_right.set_xlim(0, 1.1)
-                else:
-                    ax_right.set_xlim(0, max_y_density * 1.1 if max_y_density > 0 else 1.1)
-                
-                ax_right.tick_params(axis='y', labelleft=False)
-                if st.session_state.graph_settings['grid_visible']:
-                    ax_right.grid(True, alpha=0.3)
-                
-                # Title
-                if st.session_state.plot_title:
-                    fig.suptitle(st.session_state.plot_title, fontsize=st.session_state.axis_label_fontsize * 1.2, fontweight='bold')
-                else:
-                    fig.suptitle('Scatter Plot with Marginal Densities', fontsize=st.session_state.axis_label_fontsize * 1.2, fontweight='bold')
-                
-                st.pyplot(fig)
-                
-                # Alternative plots
-                st.subheader("Alternative Representation")
-                
-                fig2, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 12))
-
-                # Apply custom settings to all axes
-                for ax in [ax1, ax2, ax3, ax4]:
-                    set_custom_axes(ax, 
-                                  border_color=st.session_state.graph_settings['border_color'], 
-                                  border_width=st.session_state.graph_settings['border_width'],
-                                  grid_color=st.session_state.graph_settings['grid_color'],
-                                  grid_visible=st.session_state.graph_settings['grid_visible'],
-                                  background_color=st.session_state.graph_settings['background_color'],
-                                  tick_fontsize=st.session_state.tick_fontsize,
-                                  label_fontsize=st.session_state.axis_label_fontsize,
-                                  title_fontsize=st.session_state.axis_label_fontsize)
-                
-                # 1. Main scatter plot with markers
-                for i, dataset in enumerate(st.session_state.datasets):
-                    if dataset['active']:
-                        df = parse_data(dataset['data'], dataset['name'])
-                        if not df.empty:
-                            ax1.scatter(df['x'], df['y'], 
-                                      color=dataset['color'], 
-                                      label=dataset['name'],
-                                      marker=matplotlib_markers[dataset['marker']],
-                                      s=st.session_state.marker_size, 
-                                      alpha=0.7)
-                
-                if st.session_state.plot_title:
-                    ax1_title = st.session_state.plot_title
-                else:
-                    ax1_title = 'Scatter Plot: All Samples'
-                ax1.set_title(ax1_title, fontsize=st.session_state.axis_label_fontsize * 1.1)
-                ax1.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=st.session_state.axis_label_fontsize)
-                ax1.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=st.session_state.axis_label_fontsize)
-                if len(st.session_state.datasets) > 0:
-                    ax1.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
-                             title_fontsize=st.session_state.legend_fontsize)
-                if st.session_state.graph_settings['grid_visible']:
-                    ax1.grid(True, alpha=0.3)
-                
-                # Apply axis boundaries
-                if st.session_state.x_manual and st.session_state.x_min is not None and st.session_state.x_max is not None:
-                    ax1.set_xlim(st.session_state.x_min, st.session_state.x_max)
-                    ax3.set_xlim(st.session_state.x_min, st.session_state.x_max)
-                else:
-                    ax1.set_xlim(auto_x_min, auto_x_max)
-                    ax3.set_xlim(auto_x_min, auto_x_max)
-                
-                if st.session_state.y_manual and st.session_state.y_min is not None and st.session_state.y_max is not None:
-                    ax1.set_ylim(st.session_state.y_min, st.session_state.y_max)
-                    ax4.set_ylim(st.session_state.y_min, st.session_state.y_max)
-                else:
-                    ax1.set_ylim(auto_y_min, auto_y_max)
-                    ax4.set_ylim(auto_y_min, auto_y_max)
-                
-                # 2. Second scatter plot with markers
-                for i, dataset in enumerate(st.session_state.datasets):
-                    if dataset['active']:
-                        df = parse_data(dataset['data'], dataset['name'])
-                        if not df.empty:
-                            ax2.scatter(df['x'], df['y'], 
-                                      color=dataset['color'], 
-                                      label=dataset['name'],
-                                      marker=matplotlib_markers[dataset['marker']],
-                                      s=st.session_state.marker_size, 
-                                      alpha=0.7)
-                
-                ax2.set_title('Scatter Plot', fontsize=st.session_state.axis_label_fontsize * 1.1)
-                ax2.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=st.session_state.axis_label_fontsize)
-                ax2.set_ylabel(format_axis_label(st.session_state.y_axis_label), fontsize=st.session_state.axis_label_fontsize)
-                if len(st.session_state.datasets) > 0:
-                    ax2.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
-                             title_fontsize=st.session_state.legend_fontsize)
-                if st.session_state.graph_settings['grid_visible']:
-                    ax2.grid(True, alpha=0.3)
-                
-                # 3. KDE for X
-                max_x_density_single = 0
-                for i, dataset in enumerate(st.session_state.datasets):
-                    if dataset['active']:
-                        df = parse_data(dataset['data'], dataset['name'])
-                        if not df.empty and len(df) > 1:
-                            color = dataset['color']
-                            x_vals, density = estimate_density(df['x'].values, normalize=st.session_state.normalize_density)
-                            if x_vals is not None and density is not None:
-                                if not st.session_state.normalize_density and density.max() > max_x_density_single:
-                                    max_x_density_single = density.max()
-                                ax3.fill_between(x_vals, 0, density, color=color, alpha=0.3)
-                                ax3.plot(x_vals, density, color=color, linewidth=2, label=dataset['name'])
-                
-                ax3.set_title('Distribution by X', fontsize=st.session_state.axis_label_fontsize * 1.1)
-                ax3.set_xlabel(format_axis_label(st.session_state.x_axis_label), fontsize=st.session_state.axis_label_fontsize)
-                density_label_single = 'Normalized Density' if st.session_state.normalize_density else 'Density'
-                ax3.set_ylabel(density_label_single, fontsize=st.session_state.axis_label_fontsize)
-                if len(st.session_state.datasets) > 0:
-                    ax3.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
-                             title_fontsize=st.session_state.legend_fontsize)
-                if st.session_state.graph_settings['grid_visible']:
-                    ax3.grid(True, alpha=0.3)
-                
-                # Set y-lim for non-normalized density
-                if not st.session_state.normalize_density and max_x_density_single > 0:
-                    ax3.set_ylim(0, max_x_density_single * 1.1)
-                
-                # 4. KDE for Y
-                max_y_density_single = 0
-                for i, dataset in enumerate(st.session_state.datasets):
-                    if dataset['active']:
-                        df = parse_data(dataset['data'], dataset['name'])
-                        if not df.empty and len(df) > 1:
-                            color = dataset['color']
-                            y_vals, density = estimate_density(df['y'].values, normalize=st.session_state.normalize_density)
-                            if y_vals is not None and density is not None:
-                                if not st.session_state.normalize_density and density.max() > max_y_density_single:
-                                    max_y_density_single = density.max()
-                                ax4.fill_between(y_vals, 0, density, color=color, alpha=0.3)
-                                ax4.plot(y_vals, density, color=color, linewidth=2, label=dataset['name'])
-                
-                ax4.set_title('Distribution by Y', fontsize=st.session_state.axis_label_fontsize * 1.1)
-                ax4.set_xlabel(format_axis_label(st.session_state.y_axis_label), fontsize=st.session_state.axis_label_fontsize)
-                ax4.set_ylabel(density_label_single, fontsize=st.session_state.axis_label_fontsize)
-                if len(st.session_state.datasets) > 0:
-                    ax4.legend(title=st.session_state.legend_title, fontsize=st.session_state.legend_fontsize, 
-                             title_fontsize=st.session_state.legend_fontsize)
-                if st.session_state.graph_settings['grid_visible']:
-                    ax4.grid(True, alpha=0.3)
-                
-                # Set y-lim for non-normalized density
-                if not st.session_state.normalize_density and max_y_density_single > 0:
-                    ax4.set_ylim(0, max_y_density_single * 1.1)
-                
-                if st.session_state.plot_title:
-                    plt.suptitle(st.session_state.plot_title, 
-                               fontsize=st.session_state.axis_label_fontsize * 1.3, fontweight='bold')
-                else:
-                    plt.suptitle('Data Analysis with Marginal Distributions', 
-                               fontsize=st.session_state.axis_label_fontsize * 1.3, fontweight='bold')
+                # Adjust layout
                 plt.tight_layout()
-                st.pyplot(fig2)
+                if st.session_state.plot_title:
+                    fig_grid.suptitle(f"Comparison of Different Marginal Types: {st.session_state.plot_title}", 
+                                   fontsize=st.session_state.axis_label_fontsize * 1.3, fontweight='bold')
+                else:
+                    fig_grid.suptitle("Comparison of Different Marginal Distribution Types", 
+                                   fontsize=st.session_state.axis_label_fontsize * 1.3, fontweight='bold')
+                plt.subplots_adjust(top=0.92)
+                st.pyplot(fig_grid)
                 
-                # Interactive Plotly plot
+                # 3. Interactive Plotly plot
                 st.subheader("Interactive Plot (Plotly)")
                 
                 fig_plotly = make_subplots(
@@ -1775,8 +1881,11 @@ with tab3:
         
         # Marginal distributions setting
         st.subheader("Marginal Distributions Setting")
-        density_status = "NORMALIZED to [0,1]" if st.session_state.normalize_density else "ACTUAL DENSITY VALUES"
-        st.info(f"**Marginal Distributions:** {density_status}")
+        if st.session_state.marginal_type == 'density':
+            density_status = "NORMALIZED to [0,1]" if st.session_state.normalize_density else "ACTUAL DENSITY VALUES"
+            st.info(f"**Marginal Distributions:** {st.session_state.marginal_type.upper()} - {density_status}")
+        else:
+            st.info(f"**Marginal Distributions:** {st.session_state.marginal_type.upper()}")
         
         # Graph settings
         st.subheader("Graph Settings")
@@ -1834,7 +1943,8 @@ st.markdown("### Usage Instructions:")
 st.markdown("""
 1. **Sidebar**: 
    - Configure plot title, axis labels, and legend title in "Title and Label Settings"
-   - Choose whether to normalize marginal distributions in "Marginal Distributions"
+   - Choose type of marginal distribution: density, histogram, boxplot, or violin
+   - For density plots, choose whether to normalize marginal distributions
    - Configure marker size in "Display Settings"
    - Configure font sizes for legend, axis labels, and tick labels
    - Click "➕ Add New Dataset" to create datasets
@@ -1856,10 +1966,11 @@ st.markdown("""
 
 **Important**: The "Download ALL Data with Settings" file contains all parameters and can be loaded back via the sidebar.
 
-**Marginal Distributions**: You can choose between normalized (scaled to [0,1]) and actual density values for marginal distributions. Normalized is useful for comparing shapes, while actual density shows real probability density values.
+**Marginal Distributions Types**:
+- **Density**: Kernel density estimation plots (can be normalized or actual density)
+- **Histogram**: Histograms showing frequency distributions
+- **Boxplot**: Box-and-whisker plots showing quartiles and outliers
+- **Violin**: Combination of boxplot and density plot, showing full distribution
 
 **developed by @daM, @CTA, https://chimicatechnoacta.ru **.
 """)
-
-
-
