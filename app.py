@@ -7,6 +7,7 @@ from scipy.stats import gaussian_kde
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import math
+import re
 import io
 import json
 import base64
@@ -43,27 +44,196 @@ def format_axis_label(text):
     
     return text
 
-# Function to parse data
+# Function to parse data with multiple separator support
 def parse_data(text, dataset_name):
-    """Converts text data to DataFrame"""
+    """Converts text data to DataFrame with support for multiple separators"""
     lines = text.strip().split('\n')
     data = []
-    for line in lines:
-        if line.strip():
+    
+    for line_num, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Skip comment lines starting with #
+        if line.startswith('#'):
+            continue
+            
+        # Try different separators
+        separators = ['\t', ';', ',', ' ']
+        parts = None
+        
+        for sep in separators:
+            if sep in line:
+                # Special handling for space - need to avoid splitting single numbers with spaces
+                if sep == ' ':
+                    # Check if this is likely space-separated data (not just spaces within numbers)
+                    temp_parts = line.split()
+                    if len(temp_parts) >= 2:
+                        try:
+                            # Try to convert first two parts to float
+                            float(temp_parts[0])
+                            float(temp_parts[1])
+                            parts = temp_parts
+                            break
+                        except:
+                            continue
+                else:
+                    parts = line.split(sep)
+                    if len(parts) >= 2:
+                        # Clean up each part
+                        parts = [p.strip() for p in parts]
+                        break
+        
+        if parts and len(parts) >= 2:
             try:
-                parts = line.split('\t')
-                if len(parts) >= 2:
-                    x = float(parts[0].strip())
-                    y = float(parts[1].strip())
+                # Clean the values - remove any non-numeric characters except decimal point and minus
+                x_val = parts[0].strip()
+                y_val = parts[1].strip()
+                
+                # Replace comma decimal separator with dot if needed
+                if ',' in x_val and '.' not in x_val:
+                    x_val = x_val.replace(',', '.')
+                if ',' in y_val and '.' not in y_val:
+                    y_val = y_val.replace(',', '.')
+                
+                # Remove any non-numeric characters except decimal point, minus, and 'e' for scientific notation
+                x_val = ''.join(c for c in x_val if c.isdigit() or c in '.-eE')
+                y_val = ''.join(c for c in y_val if c.isdigit() or c in '.-eE')
+                
+                x = float(x_val) if x_val else None
+                y = float(y_val) if y_val else None
+                
+                if x is not None and y is not None:
                     data.append([x, y])
-            except:
-                continue
+            except Exception as e:
+                # If conversion fails, try alternative approach
+                try:
+                    # Try direct conversion after removing whitespace
+                    x = float(parts[0].replace(',', '.').strip())
+                    y = float(parts[1].replace(',', '.').strip())
+                    data.append([x, y])
+                except:
+                    # Skip this line if it can't be parsed
+                    continue
+        else:
+            # Try to extract numbers from the line
+            import re
+            numbers = re.findall(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', line)
+            if len(numbers) >= 2:
+                try:
+                    x = float(numbers[0].replace(',', '.'))
+                    y = float(numbers[1].replace(',', '.'))
+                    data.append([x, y])
+                except:
+                    continue
     
     if data:
         df = pd.DataFrame(data, columns=['x', 'y'])
         df['group'] = dataset_name
         return df
     return pd.DataFrame()
+
+
+# Function to format data for display in text area - converts to tab-separated
+def format_data_for_display(data_text):
+    """Formats data for display in text area - converts to tab-separated"""
+    lines = data_text.strip().split('\n')
+    formatted_lines = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Skip comment lines
+        if line.startswith('#'):
+            formatted_lines.append(line)
+            continue
+            
+        # Try different separators
+        separators = ['\t', ';', ',', ' ']
+        parts = None
+        
+        for sep in separators:
+            if sep in line:
+                # Special handling for space
+                if sep == ' ':
+                    temp_parts = line.split()
+                    if len(temp_parts) >= 2:
+                        try:
+                            float(temp_parts[0])
+                            float(temp_parts[1])
+                            parts = temp_parts
+                            break
+                        except:
+                            continue
+                else:
+                    parts = line.split(sep)
+                    if len(parts) >= 2:
+                        parts = [p.strip() for p in parts]
+                        break
+        
+        if parts and len(parts) >= 2:
+            # Format as tab-separated
+            formatted_lines.append(f"{parts[0]}\t{parts[1]}")
+        else:
+            # If no separator found, keep original line
+            formatted_lines.append(line)
+    
+    return '\n'.join(formatted_lines)
+
+
+# Function to detect the most likely separator used in the data
+def detect_separator(text):
+    """Detects the most likely separator used in the data"""
+    lines = text.strip().split('\n')
+    
+    # Count occurrences of each separator in non-empty lines
+    separator_counts = {'\t': 0, ';': 0, ',': 0}
+    space_as_separator = 0
+    
+    for line in lines[:10]:  # Check first 10 lines
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        
+        # Check for tab
+        if '\t' in line:
+            separator_counts['\t'] += 1
+        
+        # Check for semicolon
+        if ';' in line:
+            separator_counts[';'] += 1
+        
+        # Check for comma
+        if ',' in line:
+            separator_counts[','] += 1
+        
+        # Check if space is likely separator (has at least 2 numbers separated by spaces)
+        parts = line.split()
+        if len(parts) >= 2:
+            try:
+                float(parts[0].replace(',', '.'))
+                float(parts[1].replace(',', '.'))
+                space_as_separator += 1
+            except:
+                pass
+    
+    # Determine which separator is most common
+    max_count = 0
+    likely_separator = '\t'  # Default
+    
+    for sep, count in separator_counts.items():
+        if count > max_count:
+            max_count = count
+            likely_separator = sep
+    
+    # Check if space is more common
+    if space_as_separator > max_count:
+        likely_separator = ' '
+    
+    return likely_separator
 
 # Improved density estimation function with smooth transition to zero
 def estimate_density(data, extend_range=True, padding_factor=0.3, normalize=True):
@@ -605,8 +775,9 @@ def export_all_data_with_settings(datasets, x_label, y_label, plot_title, legend
     return "\n".join(lines)
 
 # Function to import data with settings
+# Function to import data with settings - UPDATED FOR MULTIPLE SEPARATORS
 def import_data_with_settings(file_content):
-    """Imports data and settings from CSV file"""
+    """Imports data and settings from CSV file with multiple separator support"""
     
     lines = file_content.strip().split('\n')
     
@@ -759,22 +930,51 @@ def import_data_with_settings(file_content):
                 except:
                     continue
         
-        # Process data
+        # Process data - UPDATED FOR MULTIPLE SEPARATORS
         elif current_section == "data":
             if line.startswith("dataset_index,dataset_name,x,y"):
                 continue
-            parts = line.split(',')
-            if len(parts) >= 4:
+            
+            # Try different separators for data lines
+            separators = [',', ';', '\t']
+            parts = None
+            
+            for sep in separators:
+                if sep in line:
+                    parts = line.split(sep)
+                    if len(parts) >= 4:
+                        break
+            
+            if not parts and ' ' in line:
+                # Try space separator
+                parts = line.split(' ')
+                if len(parts) < 4:
+                    parts = None
+            
+            if parts and len(parts) >= 4:
                 try:
                     data_point = {
-                        'dataset_index': int(parts[0]),
-                        'dataset_name': parts[1],
-                        'x': float(parts[2]),
-                        'y': float(parts[3])
+                        'dataset_index': int(parts[0].strip()),
+                        'dataset_name': parts[1].strip(),
+                        'x': float(parts[2].strip().replace(',', '.')),
+                        'y': float(parts[3].strip().replace(',', '.'))
                     }
                     data_points.append(data_point)
                 except:
-                    continue
+                    # Try alternative parsing
+                    try:
+                        import re
+                        numbers = re.findall(r'[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?', line)
+                        if len(numbers) >= 4:
+                            data_point = {
+                                'dataset_index': int(float(numbers[0])),
+                                'dataset_name': ''.join(filter(str.isalpha, line)),
+                                'x': float(numbers[2]),
+                                'y': float(numbers[3])
+                            }
+                            data_points.append(data_point)
+                    except:
+                        continue
     
     # Reconstruct datasets
     datasets = []
@@ -785,6 +985,7 @@ def import_data_with_settings(file_content):
         idx = dp['dataset_index']
         if idx not in data_by_dataset:
             data_by_dataset[idx] = []
+        # Store in tab-separated format for consistency
         data_by_dataset[idx].append(f"{dp['x']}\t{dp['y']}")
     
     # Create datasets structure
@@ -1373,8 +1574,40 @@ tab1, tab2, tab3 = st.tabs(["📁 Data", "📊 Plots", "📈 Statistics"])
 
 with tab1:
     st.header("Dataset Configuration")
-    st.markdown("Enter data in format: **X_value<tab>Y_value**")
-    st.markdown("Example: `0.1\t-5.5`")
+    
+    # Instructions with examples
+    st.markdown("""
+    **Enter data in any of these formats:**
+    - **Tab-separated:** `X_value<tab>Y_value` (Example: `0.1\t-5.5`)
+    - **Space-separated:** `X_value Y_value` (Example: `0.1 -5.5`)
+    - **Comma-separated:** `X_value,Y_value` (Example: `0.1,-5.5`)
+    - **Semicolon-separated:** `X_value;Y_value` (Example: `0.1;-5.5`)
+    
+    **Notes:**
+    - Decimal separator can be dot (.) or comma (,)
+    - Scientific notation is supported (e.g., `1.23e-4`)
+    - Comment lines starting with `#` are ignored
+    - Empty lines are ignored
+    """)
+    
+    # Format selector for new data entry
+    st.subheader("Data Entry Format")
+    entry_format = st.radio(
+        "Select format for new data entry:",
+        options=["Tab (\\t)", "Space", "Comma (,)", "Semicolon (;)"],
+        horizontal=True,
+        index=0,
+        key="entry_format_radio"
+    )
+    
+    # Map format to separator
+    format_map = {
+        "Tab (\\t)": "\t",
+        "Space": " ",
+        "Comma (,)": ",",
+        "Semicolon (;)": ";"
+    }
+    current_separator = format_map[entry_format]
     
     # Show current automatic boundaries
     auto_limits_tab1 = auto_detect_axis_limits(st.session_state.datasets)
@@ -1398,11 +1631,15 @@ with tab1:
                     )
                     st.session_state.datasets[i]['name'] = new_name
                     
+                    # Format data for display based on selected format
+                    data_for_display = dataset['data']
+                    
                     data_text = st.text_area(
-                        "Data (X\\tY)",
-                        value=dataset['data'],
-                        height=150,
-                        key=f"data_{i}"
+                        f"Data (X{current_separator}Y)",
+                        value=data_for_display,
+                        height=200,
+                        key=f"data_{i}",
+                        help=f"Enter data with '{current_separator}' as separator"
                     )
                     st.session_state.datasets[i]['data'] = data_text
                 
@@ -1438,7 +1675,101 @@ with tab1:
                         
                         # Data preview
                         st.markdown(f"**Preview ({len(df)} points):**")
-                        st.dataframe(df[['x', 'y']].head(), use_container_width=True)
+                        
+                        col_preview1, col_preview2 = st.columns([2, 1])
+                        with col_preview1:
+                            st.dataframe(df[['x', 'y']].head(10), use_container_width=True)
+                        
+                        with col_preview2:
+                            # Show detected separator info
+                            detected_sep = detect_separator(data_text)
+                            sep_names = {
+                                '\t': 'Tab',
+                                ' ': 'Space',
+                                ',': 'Comma',
+                                ';': 'Semicolon'
+                            }
+                            st.info(f"Detected separator: **{sep_names.get(detected_sep, 'Unknown')}**")
+                            
+                            # Show statistics
+                            st.info(f"Valid points: **{len(df)}**")
+                            
+                            # Quick format converter button
+                            if st.button(f"🔧 Format as {entry_format}", key=f"format_btn_{i}"):
+                                # Convert data to selected format
+                                lines = data_text.strip().split('\n')
+                                formatted_lines = []
+                                for line in lines:
+                                    line = line.strip()
+                                    if not line or line.startswith('#'):
+                                        formatted_lines.append(line)
+                                        continue
+                                    
+                                    # Parse and reformat
+                                    parsed = parse_data(line, "temp")
+                                    if not parsed.empty:
+                                        formatted_lines.append(f"{parsed['x'].iloc[0]}{current_separator}{parsed['y'].iloc[0]}")
+                                    else:
+                                        formatted_lines.append(line)
+                                
+                                st.session_state.datasets[i]['data'] = '\n'.join(formatted_lines)
+                                st.rerun()
+        
+        # Quick data entry helpers
+        st.subheader("Quick Data Entry")
+        
+        col_help1, col_help2, col_help3 = st.columns(3)
+        
+        with col_help1:
+            if st.button("📋 Paste Example Data (Linear)"):
+                example_data = """1.2\t5.1
+2.1\t7.3
+3.4\t9.8
+4.0\t11.2
+5.1\t13.4"""
+                # Convert to current separator
+                lines = example_data.split('\n')
+                formatted = []
+                for line in lines:
+                    if '\t' in line:
+                        x, y = line.split('\t')
+                        formatted.append(f"{x}{current_separator}{y}")
+                st.session_state.datasets[-1]['data'] = '\n'.join(formatted) if st.session_state.datasets else ""
+                st.rerun()
+        
+        with col_help2:
+            if st.button("📋 Paste Example Data (Two Groups)"):
+                example_data = """4.2\t8.1
+4.8\t9.3
+5.1\t9.8
+14.8\t24.3
+15.2\t25.1"""
+                # Convert to current separator
+                lines = example_data.split('\n')
+                formatted = []
+                for line in lines:
+                    if '\t' in line:
+                        x, y = line.split('\t')
+                        formatted.append(f"{x}{current_separator}{y}")
+                st.session_state.datasets[-1]['data'] = '\n'.join(formatted) if st.session_state.datasets else ""
+                st.rerun()
+        
+        with col_help3:
+            if st.button("📋 Paste Example Data (Random)"):
+                example_data = """7.2\t18.3
+8.1\t22.4
+9.3\t16.8
+10.5\t24.1
+11.8\t19.7"""
+                # Convert to current separator
+                lines = example_data.split('\n')
+                formatted = []
+                for line in lines:
+                    if '\t' in line:
+                        x, y = line.split('\t')
+                        formatted.append(f"{x}{current_separator}{y}")
+                st.session_state.datasets[-1]['data'] = '\n'.join(formatted) if st.session_state.datasets else ""
+                st.rerun()
         
         # Collect all data
         if all_data_frames:
@@ -1974,3 +2305,4 @@ st.markdown("""
 
 **developed by @daM, @CTA, https://chimicatechnoacta.ru **.
 """)
+
